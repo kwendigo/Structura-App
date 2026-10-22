@@ -13,6 +13,7 @@ interface CalendarModalProps {
   selectedDate: Date;
   onSelectDate: (d: Date) => void;
   tasks: Task[];
+  accentColor?: string;
 }
 
 export const CalendarModal: React.FC<CalendarModalProps> = ({
@@ -21,6 +22,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
   selectedDate,
   onSelectDate,
   tasks,
+  accentColor = '#007AFF',
 }) => {
   const [viewYear, setViewYear] = useState(selectedDate.getFullYear());
   const [viewMonth, setViewMonth] = useState(selectedDate.getMonth());
@@ -137,9 +139,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                 <div
                   className={`w-7 h-7 flex items-center justify-center rounded-full text-xs font-semibold transition-all ${
                     isSelected
-                      ? 'bg-rose-400 text-white shadow-sm scale-105'
+                      ? 'text-white shadow-sm scale-105'
                       : 'text-slate-800 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-800'
                   }`}
+                  style={isSelected ? { backgroundColor: accentColor } : undefined}
                 >
                   {dayNum}
                 </div>
@@ -150,7 +153,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
                       <div
                         key={i}
                         className="w-1 h-1 rounded-full opacity-80"
-                        style={{ backgroundColor: isSelected ? '#FB7185' : t.color }}
+                        style={{ backgroundColor: isSelected ? accentColor : t.color }}
                       />
                     ))}
                   </div>
@@ -167,7 +170,8 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
               onSelectDate(new Date());
               onClose();
             }}
-            className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-xs font-semibold hover:underline"
+            style={{ color: accentColor }}
           >
             Jump to Today
           </button>

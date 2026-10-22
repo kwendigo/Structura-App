@@ -12,8 +12,6 @@ import {
   Trash2,
   Plus,
   RotateCw,
-  ChevronDown,
-  ChevronRight,
   Clock,
 } from 'lucide-react';
 import { RoutineBlock, Task } from '../types';
@@ -46,7 +44,6 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
   onMoveBlock,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
-  const [isCollapsed, setIsCollapsed] = useState(false);
   const [isLifted, setIsLifted] = useState(false);
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const [liveSnappedDelta, setLiveSnappedDelta] = useState(0);
@@ -125,13 +122,13 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
 
   const handleTitleClick = () => {
     if (!isDraggingRef.current && !justDraggedRef.current) {
-      setIsCollapsed((prev) => !prev);
+      onEditBlock(block);
     }
   };
 
   const previewFirstStartM = Math.max(0, Math.min(1440 - 15, firstTaskStartM + liveSnappedDelta));
   const previewTimeStr = minutesToTimeString(previewFirstStartM, use24Hour);
-  const areTasksFolded = isLifted || isCollapsed;
+  const areTasksFolded = isLifted;
 
   return (
     <div
@@ -170,13 +167,8 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
             backgroundColor: `${hex}22`,
             color: hex,
           }}
-          title="Press & hold to drag block · Click to collapse/expand"
+          title="Press & hold to drag block · Click to edit details"
         >
-          {areTasksFolded ? (
-            <ChevronRight className="w-3.5 h-3.5 opacity-75" />
-          ) : (
-            <ChevronDown className="w-3.5 h-3.5 opacity-75" />
-          )}
           <Folder className="w-3.5 h-3.5" style={{ color: hex }} />
           <span className="text-[11px] font-bold tracking-wider uppercase">
             {block.name}

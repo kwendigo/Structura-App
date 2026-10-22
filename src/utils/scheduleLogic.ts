@@ -410,68 +410,61 @@ export function calculatePomodoroPlan(
   durationMinutes: number,
   breakMinutes: number = 5
 ): PomodoroInterval[] {
+  if (!Number.isFinite(durationMinutes) || durationMinutes < 15) return [];
+
   const intervals: PomodoroInterval[] = [];
   const startM = parseTimeToMinutes(startTime);
-  const endM = startM + durationMinutes;
-
   const actualBreak = durationMinutes < 60 ? 5 : Math.max(5, Math.min(15, breakMinutes));
+  const workCount = Math.max(2, Math.ceil((durationMinutes - actualBreak * 2) / (25 + actualBreak)));
+  let breakCount = workCount;
+  let workDuration = (durationMinutes - breakCount * actualBreak) / workCount;
+
+  if (workDuration < 5) {
+    breakCount--;
+    workDuration = (durationMinutes - breakCount * actualBreak) / workCount;
+  }
 
   let cursor = startM;
-  let workCount = 1;
-  let breakCount = 1;
-
-  while (cursor < endM) {
-    const remaining = endM - cursor;
-
-    if (remaining <= 30) {
-      intervals.push({
-        id: `work-${workCount}`,
-        type: 'work',
-        title: workCount === 1 ? 'Focus Sprint' : `Final Sprint & Wrap-up`,
-        startTime: minutesToTimeString(cursor, true),
-        endTime: minutesToTimeString(endM, true),
-        startMinutes: cursor,
-        endMinutes: endM,
-        durationMinutes: remaining,
-      });
-      break;
-    }
-
-    const workEnd = cursor + 25;
+  for (let index = 0; index < workCount; index++) {
+    const workEnd = cursor + workDuration;
     intervals.push({
-      id: `work-${workCount}`,
+      id: `work-${index + 1}`,
       type: 'work',
-      title: `Focus Sprint ${workCount}`,
-      startTime: minutesToTimeString(cursor, true),
-      endTime: minutesToTimeString(workEnd, true),
+      title: `Focus Sprint ${index + 1}`,
+      startTime: formatPomodoroTime(cursor),
+      endTime: formatPomodoroTime(workEnd),
       startMinutes: cursor,
       endMinutes: workEnd,
-      durationMinutes: 25,
+      durationMinutes: workDuration,
     });
     cursor = workEnd;
-    workCount++;
 
-    if (cursor < endM) {
-      const remainingAfterBreak = endM - (cursor + actualBreak);
-      if (remainingAfterBreak >= 5) {
-        const breakEnd = cursor + actualBreak;
-        intervals.push({
-          id: `break-${breakCount}`,
-          type: 'break',
-          title: `${actualBreak}m Rest Break`,
-          startTime: minutesToTimeString(cursor, true),
-          endTime: minutesToTimeString(breakEnd, true),
-          startMinutes: cursor,
-          endMinutes: breakEnd,
-          durationMinutes: actualBreak,
-        });
-        cursor = breakEnd;
-        breakCount++;
-      }
+    if (index < breakCount) {
+      const breakEnd = cursor + actualBreak;
+      intervals.push({
+        id: `break-${index + 1}`,
+        type: 'break',
+        title: `${actualBreak}m Rest Break`,
+        startTime: formatPomodoroTime(cursor),
+        endTime: formatPomodoroTime(breakEnd),
+        startMinutes: cursor,
+        endMinutes: breakEnd,
+        durationMinutes: actualBreak,
+      });
+      cursor = breakEnd;
     }
   }
 
   return intervals;
+}
+
+function formatPomodoroTime(minutes: number): string {
+  const totalSeconds = Math.round(minutes * 60);
+  const hours = Math.floor(totalSeconds / 3600);
+  const mins = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  const time = `${String(hours).padStart(2, '0')}:${String(mins).padStart(2, '0')}`;
+  return seconds === 0 ? time : `${time}:${String(seconds).padStart(2, '0')}`;
 }
 
 export function formatRemainingClock(remainingMinutes: number): string {

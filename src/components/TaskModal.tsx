@@ -220,6 +220,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md bg-stone-100 dark:bg-zinc-900 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
+        style={{ '--accent-color': accentColor } as React.CSSProperties}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-5 pt-4 pb-2">
@@ -303,7 +304,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 placeholder="Task title..."
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                className={`w-full text-lg md:text-xl font-bold bg-transparent border-b border-slate-300 dark:border-zinc-700 pb-1 focus:outline-none focus:border-blue-500 ${
+                className={`w-full text-lg md:text-xl font-bold bg-transparent border-b border-slate-300 dark:border-zinc-700 pb-1 focus:outline-none focus:border-[var(--accent-color)] ${
                   isCompleted ? 'line-through text-slate-400 dark:text-zinc-500' : 'text-slate-900 dark:text-white'
                 }`}
               />
@@ -313,8 +314,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   type="button"
                   onClick={() => setIsCompleted(!isCompleted)}
                   className={`w-5 h-5 rounded-full flex items-center justify-center text-xs transition-colors ${
-                    isCompleted ? 'bg-blue-600 text-white' : 'border border-slate-400 dark:border-zinc-600'
+                    isCompleted ? 'text-white' : 'border border-slate-400 dark:border-zinc-600'
                   }`}
+                  style={isCompleted ? { backgroundColor: accentColor } : undefined}
                 >
                   {isCompleted && <Check className="w-3 h-3 stroke-[3]" />}
                 </button>
@@ -344,7 +346,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         aria-label={pal.name}
                         className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${
                           color.toLowerCase() === pal.hex.toLowerCase()
-                            ? 'scale-110 ring-2 ring-offset-2 ring-blue-500'
+                            ? 'scale-110 ring-2 ring-offset-2 ring-[var(--accent-color)]'
                             : ''
                         }`}
                         style={{ backgroundColor: pal.hex }}
@@ -367,7 +369,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                             type="button"
                             onClick={() => handleColorPick(hex)}
                             className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${
-                              isSel ? 'scale-110 ring-2 ring-offset-2 ring-blue-500' : ''
+                              isSel ? 'scale-110 ring-2 ring-offset-2 ring-[var(--accent-color)]' : ''
                             }`}
                             style={{ backgroundColor: hex }}
                           />
@@ -439,7 +441,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         onClick={() => setIconCategory(cat)}
                         className={`px-2 py-0.5 rounded-full whitespace-nowrap font-medium transition-colors ${
                           iconCategory === cat
-                            ? 'bg-blue-600 text-white'
+                            ? 'bg-[var(--accent-color)] text-white'
                             : 'bg-slate-100 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300 hover:bg-slate-200'
                         }`}
                       >
@@ -467,7 +469,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                         }}
                         className={`p-2 rounded-xl flex flex-col items-center justify-center transition-all ${
                           icon === item.id
-                            ? 'bg-blue-600 text-white scale-105 shadow-sm'
+                            ? 'bg-[var(--accent-color)] text-white scale-105 shadow-sm'
                             : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-200/80 dark:hover:bg-zinc-700'
                         }`}
                       >
@@ -483,7 +485,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           <div className="bg-white dark:bg-zinc-800/80 rounded-2xl p-3 shadow-2xs divide-y divide-slate-100 dark:divide-zinc-700/60 text-xs">
             <div className="py-2 flex items-center justify-between">
               <div className="flex items-center gap-2 text-slate-600 dark:text-zinc-300">
-                <Clock className="w-4 h-4 text-blue-500" />
+                <Clock className="w-4 h-4" style={{ color: accentColor }} />
                 <span className="font-medium">{isReminder ? 'Reminder Time' : 'Time'}</span>
               </div>
 
@@ -519,7 +521,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     }}
                     className={`py-1.5 px-3 rounded-xl font-medium transition-all ${
                       !isReminder && durationMinutes === mins
-                        ? 'bg-blue-600 text-white shadow-xs'
+                        ? 'bg-[var(--accent-color)] text-white shadow-xs'
                         : 'bg-stone-100 dark:bg-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-stone-200'
                     }`}
                   >
@@ -571,7 +573,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     type="button"
                     onClick={() => setSelectedBlockId(b.id)}
                     className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors ${
-                      selectedBlockId === b.id ? 'ring-2 ring-blue-500 font-bold' : ''
+                      selectedBlockId === b.id ? 'ring-2 ring-[var(--accent-color)] font-bold' : ''
                     }`}
                     style={{
                       backgroundColor: `${b.color}20`,
@@ -599,7 +601,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       onClick={() => handleToggleDay(key)}
                       className={`py-1 text-center rounded-xl text-[11px] font-medium transition-colors ${
                         isSelected
-                          ? 'bg-blue-600 text-white font-semibold'
+                          ? 'bg-[var(--accent-color)] text-white font-semibold'
                           : 'bg-stone-100 dark:bg-zinc-700 text-slate-500'
                       }`}
                     >
@@ -653,7 +655,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddSubtask}
-                  className="px-2.5 py-1.5 bg-blue-600 text-white rounded-xl text-xs font-semibold"
+                  className="px-2.5 py-1.5 bg-[var(--accent-color)] text-white rounded-xl text-xs font-semibold"
                 >
                   Add
                 </button>
@@ -670,7 +672,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 placeholder="Add notes, meeting links or phone numbers..."
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="w-full p-2.5 text-xs bg-stone-100 dark:bg-zinc-700/80 rounded-xl text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none"
+                className="w-full p-2.5 text-xs bg-stone-100 dark:bg-zinc-700/80 rounded-xl text-slate-800 dark:text-white focus:outline-none focus:ring-1 focus:ring-[var(--accent-color)] resize-none"
               />
             </div>
           </div>
@@ -678,7 +680,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           <div className="pt-2">
             <button
               type="submit"
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-semibold text-sm rounded-2xl shadow-md active:scale-98 transition-all"
+              className="w-full py-3 bg-[var(--accent-color)] hover:brightness-90 text-white font-semibold text-sm rounded-2xl shadow-md active:scale-98 transition-all"
             >
               {editingTask ? 'Save Task' : 'Add to Day Schedule'}
             </button>

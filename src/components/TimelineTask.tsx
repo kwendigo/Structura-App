@@ -242,17 +242,15 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
 
         <div
           className={`relative w-8.5 rounded-full flex flex-col items-center justify-center overflow-hidden transition-all shadow-xs flex-shrink-0 ${
+            isActive ? 'bg-slate-100 dark:bg-zinc-800' : ''
+          } ${
             isOverlappingPrev
               ? 'ring-2 ring-white dark:ring-zinc-900 shadow-md backdrop-blur-xs'
               : ''
           }`}
           style={{
             height: isReminder ? '36px' : `${Math.max(52, nodeHeight)}px`,
-            backgroundColor: isPast
-              ? task.color
-              : isActive
-              ? '#f1f5f9'
-              : `${task.color}18`,
+            backgroundColor: isPast ? task.color : isActive ? undefined : `${task.color}18`,
           }}
         >
           {isActive && !isReminder && (
@@ -476,7 +474,8 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
                     setShowMenu(false);
                     onOpenFocus(task);
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors text-left font-semibold"
+                    style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
+                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:brightness-95 rounded-xl transition-colors text-left font-semibold"
                 >
                   <Target className="w-3.5 h-3.5" />
                   <span>Start Focus Session</span>
@@ -504,7 +503,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
                 className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-700/60 rounded-xl transition-colors text-left"
               >
                 <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Duplicate to next day</span>
+                <span>Duplicate in front of current task</span>
               </button>
 
               <button

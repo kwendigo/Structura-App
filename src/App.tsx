@@ -768,6 +768,7 @@ export default function App() {
         editingBlock={editingBlock}
         currentDay={selectedDay}
         allTasks={tasks}
+        accentColor={accentColor}
       />
 
       <SettingsModal
@@ -789,6 +790,7 @@ export default function App() {
           setSelectedDay(dayKeyMap[jsDay]);
         }}
         tasks={tasks}
+        accentColor={accentColor}
       />
 
       <FocusModeModal

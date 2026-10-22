@@ -138,8 +138,10 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
 
   const endTimeStr = calculateEndTime(task.startTime, task.durationMinutes);
   const isUnderHour = task.durationMinutes < 60;
+  const isPomodoroAvailable = task.durationMinutes >= 15;
 
   const handleTabClick = (mode: 'standard' | 'pomodoro') => {
+    if (mode === 'pomodoro' && !isPomodoroAvailable) return;
     if (mode === 'pomodoro' && focusMode === 'standard') {
       setConfirmModal('to_pomodoro');
     } else if (mode === 'standard' && focusMode === 'pomodoro') {
@@ -181,11 +183,13 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
             <button
               type="button"
               onClick={() => handleTabClick('pomodoro')}
+              disabled={!isPomodoroAvailable}
+              aria-disabled={!isPomodoroAvailable}
               className={`px-3 py-1 rounded-full text-xs font-semibold transition-all flex items-center gap-1 ${
                 focusMode === 'pomodoro'
                   ? 'bg-white dark:bg-zinc-800 text-slate-900 dark:text-white shadow-xs'
                   : 'text-slate-500 dark:text-zinc-400 hover:text-slate-800'
-              }`}
+              } ${!isPomodoroAvailable ? 'opacity-40 cursor-not-allowed hover:text-slate-500' : ''}`}
             >
               <Timer className="w-3 h-3 text-rose-500" />
               <span>Pomodoro {pomodoroNotificationsActive ? '🔔' : ''}</span>
