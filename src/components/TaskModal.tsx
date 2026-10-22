@@ -610,6 +610,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   );
                 })}
               </div>
+              <p className="mt-2 text-[10px] text-slate-400 dark:text-zinc-500">
+                A push notification is scheduled for the next selected day only.
+              </p>
             </div>
           </div>
 

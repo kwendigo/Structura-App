@@ -24,14 +24,14 @@ import {
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { minutesToTimeString, formatDuration } from '../utils/scheduleLogic';
-import { APPLE_PALETTE } from '../utils/storage';
+import { APPLE_PALETTE, RECORDED_TASKS_LIBRARY } from '../utils/storage';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: AppSettings;
   onUpdateSettings: (newSettings: AppSettings) => void;
-  onClearSchedule: () => void;
+  onResetDefaultSchedule: () => void;
 }
 
 type SettingsSection = 'main' | 'customisation' | 'recorded_tasks' | 'notifications' | 'widgets' | 'icloud';
@@ -41,7 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onUpdateSettings,
-  onClearSchedule,
+  onResetDefaultSchedule,
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('main');
   const [newSuggestion, setNewSuggestion] = useState('');
@@ -58,7 +58,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const recordedList = settings.rememberedTasks || [];
+  const recordedList = Array.isArray(settings.rememberedTasks)
+    ? settings.rememberedTasks
+    : RECORDED_TASKS_LIBRARY;
 
   const filteredTasks = recordedList.filter((task) => {
     const matchesSearch = task.toLowerCase().includes(taskSearchQuery.toLowerCase());
@@ -310,7 +312,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   type="button"
                   onClick={() => {
                     if (confirm('Clear all tasks and routine blocks from your schedule?')) {
-                      onClearSchedule();
+                      onResetDefaultSchedule();
                       onClose();
                     }
                   }}

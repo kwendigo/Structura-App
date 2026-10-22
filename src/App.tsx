@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Plus,
   Folder,
@@ -30,7 +30,6 @@ import {
   detectAllClashes,
   filterBlocksForDay,
   formatDuration,
-  calculateEndTime,
 } from './utils/scheduleLogic';
 import {
   loadStoredTasks,
@@ -39,10 +38,14 @@ import {
   saveStoredBlocks,
   loadStoredSettings,
   saveStoredSettings,
-  DEFAULT_TASKS,
-  DEFAULT_BLOCKS,
 } from './utils/storage';
-import { requestNotificationPermission, sendDeviceNotification } from './utils/notifications';
+import {
+  cancelTaskNotification,
+  getNextTargetWeekday,
+  getOneSignalSubscriptionId,
+  initializeOneSignal,
+  scheduleTaskNotification,
+} from './utils/notifications';
 import { Header } from './components/Header';
 import { TimelineTask } from './components/TimelineTask';
 import { UnallocatedGap } from './components/UnallocatedGap';
@@ -116,53 +119,10 @@ export default function App() {
   }, [settings.simulatedTimeEnabled]);
 
   useEffect(() => {
-    const askOnce = () => {
-      requestNotificationPermission();
-      window.removeEventListener('pointerdown', askOnce);
-    };
-    window.addEventListener('pointerdown', askOnce);
-    return () => window.removeEventListener('pointerdown', askOnce);
-  }, []);
-
-  const tasksRef = useRef<Task[]>(tasks);
-  tasksRef.current = tasks;
-  useEffect(() => {
-    const dayKeyMap: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-    const notified = new Set<string>();
-
-    const checkTaskStarts = () => {
-      const d = new Date();
-      const nowM = d.getHours() * 60 + d.getMinutes();
-      const today = dayKeyMap[d.getDay()];
-      const dateKey = d.toDateString();
-
-      filterTasksForDay(tasksRef.current, today).forEach((t) => {
-        if (t.completed || parseTimeToMinutes(t.startTime) !== nowM) return;
-        const key = `${dateKey}-${t.id}-${t.startTime}`;
-        if (notified.has(key)) return;
-        notified.add(key);
-
-        const endStr = calculateEndTime(t.startTime, t.durationMinutes);
-        const durStr = formatDuration(t.durationMinutes);
-        sendDeviceNotification(
-          t.title,
-          t.isReminder ? `Reminder at ${t.startTime}` : `Starting now | ${t.startTime} – ${endStr} (${durStr})`,
-          `task-start-${t.id}`
-        );
-      });
-    };
-
-    let interval: ReturnType<typeof setInterval> | undefined;
-    const msToNextMinute = 60000 - (Date.now() % 60000);
-    const timeout = setTimeout(() => {
-      checkTaskStarts();
-      interval = setInterval(checkTaskStarts, 60000);
-    }, msToNextMinute + 50);
-
-    return () => {
-      clearTimeout(timeout);
-      if (interval) clearInterval(interval);
-    };
+    if (!import.meta.env.VITE_ONESIGNAL_APP_ID) return;
+    initializeOneSignal().catch((error: unknown) => {
+      console.error('OneSignal initialization failed', error);
+    });
   }, []);
 
   const effectiveCurrentTimeMinutes = settings.simulatedTimeEnabled
@@ -289,19 +249,46 @@ export default function App() {
   const handleSaveTask = (taskData: Omit<Task, 'id'>, existingId?: string) => {
     const finalColor = uniformEnabled ? uniformColor : taskData.color;
     const finalData = { ...taskData, color: finalColor };
+    const existingTask = existingId ? tasks.find((task) => task.id === existingId) : undefined;
+    const savedTask: Task = {
+      ...finalData,
+      id: existingId || `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      scheduledNotificationId: existingTask?.scheduledNotificationId,
+    };
 
     if (existingId) {
       setTasks((prev) =>
-        prev.map((t) => (t.id === existingId ? { ...t, ...finalData, id: existingId } : t))
+        prev.map((t) => (t.id === existingId ? savedTask : t))
       );
       showToast(`Updated "${finalData.title}"`);
     } else {
-      const newTask: Task = {
-        ...finalData,
-        id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      };
-      setTasks((prev) => [...prev, newTask]);
+      setTasks((prev) => [...prev, savedTask]);
       showToast(`Added "${finalData.title}"`);
+    }
+
+    if (settings.notificationsEnabled !== false) {
+      void (async () => {
+        try {
+          const targetedWeekday = getNextTargetWeekday(savedTask);
+          const subscriptionId = await getOneSignalSubscriptionId();
+          const result = await scheduleTaskNotification(
+            savedTask,
+            targetedWeekday,
+            subscriptionId,
+            existingTask?.scheduledNotificationId
+          );
+          setTasks((prev) =>
+            prev.map((task) => task.id === savedTask.id
+              ? { ...task, scheduledNotificationId: result.notificationId }
+              : task)
+          );
+          showToast(result.warning || `Notification scheduled for ${targetedWeekday.toUpperCase()}`);
+        } catch (error) {
+          console.error('Could not schedule task notification', error);
+          const message = error instanceof Error ? error.message : 'Unknown notification error.';
+          showToast(`Task saved, but notification was not scheduled: ${message}`);
+        }
+      })();
     }
 
     const currentTemplates = settings.taskTemplates || [];
@@ -331,8 +318,16 @@ export default function App() {
   };
 
   const handleDeleteTask = (taskId: string) => {
+    const deletedTask = tasks.find((task) => task.id === taskId);
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     showToast('Task deleted');
+    if (deletedTask?.scheduledNotificationId) {
+      void cancelTaskNotification(deletedTask.scheduledNotificationId).catch((error: unknown) => {
+        console.error('Could not cancel task notification', error);
+        const message = error instanceof Error ? error.message : 'Unknown notification error.';
+        showToast(`Task deleted, but its notification could not be cancelled: ${message}`);
+      });
+    }
   };
 
   const handleCopyTask = (task: Task) => {
@@ -341,6 +336,7 @@ export default function App() {
       id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       title: `${task.title} (Copy)`,
       completed: false,
+      scheduledNotificationId: undefined,
       days: [selectedDay],
       subtasks: task.subtasks.map((st) => ({
         ...st,
@@ -417,9 +413,16 @@ export default function App() {
   };
 
   const handleResetDefaultSchedule = () => {
-    setTasks(DEFAULT_TASKS);
-    setBlocks(DEFAULT_BLOCKS);
-    showToast('Reset to sample schedule');
+    tasks.forEach((task) => {
+      if (!task.scheduledNotificationId) return;
+      void cancelTaskNotification(task.scheduledNotificationId).catch((error: unknown) => {
+        console.error('Could not cancel task notification while clearing the schedule', error);
+        showToast(`Could not cancel the scheduled notification for "${task.title}".`);
+      });
+    });
+    setTasks([]);
+    setBlocks([]);
+    showToast('Schedule cleared');
   };
 
   const renderTimeline = () => {
@@ -775,7 +778,28 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
-        onUpdateSettings={(newSettings) => setSettings(newSettings)}
+        onUpdateSettings={(newSettings) => {
+          if (settings.notificationsEnabled !== false && newSettings.notificationsEnabled === false) {
+            const scheduledTasks = tasks.filter((task) => task.scheduledNotificationId);
+            scheduledTasks.forEach((task) => {
+              const notificationId = task.scheduledNotificationId;
+              if (!notificationId) return;
+              void cancelTaskNotification(notificationId)
+                .then(() => {
+                  setTasks((prev) => prev.map((currentTask) => (
+                    currentTask.id === task.id && currentTask.scheduledNotificationId === notificationId
+                      ? { ...currentTask, scheduledNotificationId: undefined }
+                      : currentTask
+                  )));
+                })
+                .catch((error: unknown) => {
+                  console.error('Could not cancel task notification after disabling reminders', error);
+                  showToast(`Could not cancel the scheduled notification for "${task.title}".`);
+                });
+            });
+          }
+          setSettings(newSettings);
+        }}
         onResetDefaultSchedule={handleResetDefaultSchedule}
       />
 

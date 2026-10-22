@@ -34,6 +34,7 @@ export interface Task {
   blockId?: string | null; // Optional reference to RoutineBlock
   notes?: string;
   completedAt?: string; // ISO string if completed earlier
+  scheduledNotificationId?: string;
 }
 
 export interface TaskTemplate {

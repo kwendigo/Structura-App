@@ -249,6 +249,7 @@ export function duplicateDaySchedule(
       id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       days: [targetDay],
       completed: false,
+      scheduledNotificationId: undefined,
       blockId: newBlockId,
       subtasks: t.subtasks.map((st) => ({
         ...st,
@@ -289,6 +290,7 @@ export function duplicateBlockSchedule(
     id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
     days: [targetDay],
     completed: false,
+    scheduledNotificationId: undefined,
     blockId: newBlockId,
     subtasks: t.subtasks.map((st) => ({
       ...st,
