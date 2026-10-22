@@ -1,4 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
+import { createHash, timingSafeEqual } from 'node:crypto';
 import { env } from 'node:process';
 
 type Weekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
@@ -55,6 +56,16 @@ function hasSameOrigin(req: VercelRequest): boolean {
     ? forwardedProtocol.split(',')[0].trim()
     : 'https';
   return origin === `${protocol}://${host}`;
+}
+
+function hasValidSchedulerSecret(req: VercelRequest): boolean {
+  const expected = env.ONESIGNAL_SCHEDULER_SECRET;
+  const suppliedHeader = req.headers['x-scheduler-secret'];
+  if (!expected || typeof suppliedHeader !== 'string' || suppliedHeader.length > 1024) return false;
+
+  const expectedHash = createHash('sha256').update(expected).digest();
+  const suppliedHash = createHash('sha256').update(suppliedHeader).digest();
+  return timingSafeEqual(expectedHash, suppliedHash);
 }
 
 function getDateParts(date: Date, timeZone: string): Record<string, string> {
@@ -179,6 +190,14 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
   }
   if (!hasSameOrigin(req)) {
     respond(res, 403, { error: 'Requests must come from this app origin.' });
+    return;
+  }
+  if (!env.ONESIGNAL_SCHEDULER_SECRET) {
+    respond(res, 503, { error: 'The scheduler authentication secret is not configured.' });
+    return;
+  }
+  if (!hasValidSchedulerSecret(req)) {
+    respond(res, 401, { error: 'A valid scheduler secret is required.' });
     return;
   }
   if (!env.ONESIGNAL_APP_ID || !env.ONESIGNAL_REST_API_KEY) {

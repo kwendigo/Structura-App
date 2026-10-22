@@ -269,12 +269,16 @@ export default function App() {
     if (settings.notificationsEnabled !== false) {
       void (async () => {
         try {
+          if (!settings.notificationApiSecret?.trim()) {
+            throw new Error('Set the scheduler secret in Settings before scheduling task notifications.');
+          }
           const targetedWeekday = getNextTargetWeekday(savedTask);
           const subscriptionId = await getOneSignalSubscriptionId();
           const result = await scheduleTaskNotification(
             savedTask,
             targetedWeekday,
             subscriptionId,
+            settings.notificationApiSecret || '',
             existingTask?.scheduledNotificationId
           );
           setTasks((prev) =>
@@ -322,7 +326,10 @@ export default function App() {
     setTasks((prev) => prev.filter((t) => t.id !== taskId));
     showToast('Task deleted');
     if (deletedTask?.scheduledNotificationId) {
-      void cancelTaskNotification(deletedTask.scheduledNotificationId).catch((error: unknown) => {
+      void cancelTaskNotification(
+        deletedTask.scheduledNotificationId,
+        settings.notificationApiSecret || ''
+      ).catch((error: unknown) => {
         console.error('Could not cancel task notification', error);
         const message = error instanceof Error ? error.message : 'Unknown notification error.';
         showToast(`Task deleted, but its notification could not be cancelled: ${message}`);
@@ -415,7 +422,10 @@ export default function App() {
   const handleResetDefaultSchedule = () => {
     tasks.forEach((task) => {
       if (!task.scheduledNotificationId) return;
-      void cancelTaskNotification(task.scheduledNotificationId).catch((error: unknown) => {
+      void cancelTaskNotification(
+        task.scheduledNotificationId,
+        settings.notificationApiSecret || ''
+      ).catch((error: unknown) => {
         console.error('Could not cancel task notification while clearing the schedule', error);
         showToast(`Could not cancel the scheduled notification for "${task.title}".`);
       });
@@ -784,7 +794,7 @@ export default function App() {
             scheduledTasks.forEach((task) => {
               const notificationId = task.scheduledNotificationId;
               if (!notificationId) return;
-              void cancelTaskNotification(notificationId)
+              void cancelTaskNotification(notificationId, settings.notificationApiSecret || '')
                 .then(() => {
                   setTasks((prev) => prev.map((currentTask) => (
                     currentTask.id === task.id && currentTask.scheduledNotificationId === notificationId

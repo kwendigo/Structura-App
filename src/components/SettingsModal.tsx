@@ -622,6 +622,26 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     />
                   </button>
                 </div>
+                <div className="space-y-1.5 border-t border-slate-100 pt-3 dark:border-zinc-700/60">
+                  <label htmlFor="notification-api-secret" className="text-xs font-semibold text-slate-800 dark:text-zinc-100">
+                    Vercel scheduler secret
+                  </label>
+                  <input
+                    id="notification-api-secret"
+                    type="password"
+                    autoComplete="new-password"
+                    value={settings.notificationApiSecret || ''}
+                    onChange={(event) => onUpdateSettings({
+                      ...settings,
+                      notificationApiSecret: event.target.value,
+                    })}
+                    placeholder="Enter the secret configured in Vercel"
+                    className="w-full rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-700 dark:text-white"
+                  />
+                  <p className="text-[10px] text-slate-500 dark:text-zinc-400">
+                    Match the scheduler secret configured in Vercel. Stored in this browser’s local storage.
+                  </p>
+                </div>
               </div>
             </div>
           )}

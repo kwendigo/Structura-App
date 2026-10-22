@@ -114,11 +114,19 @@ export async function scheduleTaskNotification(
   task: Pick<Task, 'title' | 'startTime' | 'days' | 'isReminder'>,
   targetedWeekday: DayOfWeek,
   subscriptionId: string,
+  apiSecret: string,
   previousNotificationId?: string
 ): Promise<ScheduleNotificationResult> {
+  if (!apiSecret.trim()) {
+    throw new Error('Set the scheduler secret in Settings before scheduling task notifications.');
+  }
+
   const response = await fetch('/api/schedule-notification', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Scheduler-Secret': apiSecret,
+    },
     body: JSON.stringify({
       task,
       targetedWeekday,
@@ -138,10 +146,17 @@ export async function scheduleTaskNotification(
   return result;
 }
 
-export async function cancelTaskNotification(notificationId: string): Promise<void> {
+export async function cancelTaskNotification(notificationId: string, apiSecret: string): Promise<void> {
+  if (!apiSecret.trim()) {
+    throw new Error('Set the scheduler secret in Settings before cancelling task notifications.');
+  }
+
   const response = await fetch('/api/schedule-notification', {
     method: 'DELETE',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Scheduler-Secret': apiSecret,
+    },
     body: JSON.stringify({ notificationId }),
   });
 

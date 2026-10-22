@@ -81,6 +81,7 @@ export interface AppSettings {
   uniformTaskColorEnabled?: boolean;
   uniformTaskColor?: string;
   notificationsEnabled?: boolean;
+  notificationApiSecret?: string;
   reminderMinutesBefore?: number;
   soundEnabled?: boolean;
   iCloudSyncEnabled?: boolean;
