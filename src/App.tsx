@@ -1,0 +1,805 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import {
+  Plus,
+  Folder,
+  Copy,
+  Sparkles,
+  Calendar,
+} from 'lucide-react';
+import {
+  Task,
+  RoutineBlock,
+  AppSettings,
+  DayOfWeek,
+  TaskTemplate,
+} from './types';
+import {
+  DAYS_OF_WEEK,
+  filterTasksForDay,
+  sortTasksByTime,
+  buildTimelineWithGaps,
+  duplicateDaySchedule,
+  duplicateBlockSchedule,
+  parseTimeToMinutes,
+  minutesToTimeString,
+  detectAllClashes,
+  filterBlocksForDay,
+  formatDuration,
+  calculateEndTime,
+} from './utils/scheduleLogic';
+import {
+  loadStoredTasks,
+  saveStoredTasks,
+  loadStoredBlocks,
+  saveStoredBlocks,
+  loadStoredSettings,
+  saveStoredSettings,
+  DEFAULT_TASKS,
+  DEFAULT_BLOCKS,
+} from './utils/storage';
+import { requestNotificationPermission, sendDeviceNotification } from './utils/notifications';
+import { Header } from './components/Header';
+import { TimelineTask } from './components/TimelineTask';
+import { UnallocatedGap } from './components/UnallocatedGap';
+import { RoutineBlockContainer } from './components/RoutineBlockContainer';
+import { TaskModal } from './components/TaskModal';
+import { TaskPickerModal } from './components/TaskPickerModal';
+import { SettingsModal } from './components/SettingsModal';
+import { RoutineBlockModal } from './components/RoutineBlockModal';
+import { BlockPickerModal } from './components/BlockPickerModal';
+import { CalendarModal } from './components/CalendarModal';
+import { FocusModeModal } from './components/FocusModeModal';
+
+export default function App() {
+  const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
+
+  const [tasks, setTasks] = useState<Task[]>(loadStoredTasks);
+  const [blocks, setBlocks] = useState<RoutineBlock[]>(loadStoredBlocks);
+  const [settings, setSettings] = useState<AppSettings>(loadStoredSettings);
+  const [selectedDay, setSelectedDay] = useState<DayOfWeek>('wed');
+  const [nowMinutes, setNowMinutes] = useState<number>(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
+
+  useEffect(() => {
+    const jsDay = currentDate.getDay();
+    const dayKeyMap: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    setSelectedDay(dayKeyMap[jsDay]);
+  }, []);
+
+  const [isTaskPickerOpen, setIsTaskPickerOpen] = useState(false);
+  const [isTaskModalOpen, setIsTaskModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState<Task | null>(null);
+
+  const [isBlockPickerOpen, setIsBlockPickerOpen] = useState(false);
+  const [isBlockModalOpen, setIsBlockModalOpen] = useState(false);
+  const [editingBlock, setEditingBlock] = useState<RoutineBlock | null>(null);
+
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+  const [focusTask, setFocusTask] = useState<Task | null>(null);
+
+  const [modalInitialTemplate, setModalInitialTemplate] = useState<TaskTemplate | null>(null);
+  const [modalInitialTime, setModalInitialTime] = useState<string | undefined>();
+  const [modalInitialDuration, setModalInitialDuration] = useState<number | undefined>();
+  const [modalInitialBlockId, setModalInitialBlockId] = useState<string | null>(null);
+
+  const [clipboardDay, setClipboardDay] = useState<DayOfWeek | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    saveStoredTasks(tasks);
+  }, [tasks]);
+
+  useEffect(() => {
+    saveStoredBlocks(blocks);
+  }, [blocks]);
+
+  useEffect(() => {
+    saveStoredSettings(settings);
+  }, [settings]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!settings.simulatedTimeEnabled) {
+        const d = new Date();
+        setNowMinutes(d.getHours() * 60 + d.getMinutes());
+      }
+    }, 10000);
+    return () => clearInterval(interval);
+  }, [settings.simulatedTimeEnabled]);
+
+  useEffect(() => {
+    const askOnce = () => {
+      requestNotificationPermission();
+      window.removeEventListener('pointerdown', askOnce);
+    };
+    window.addEventListener('pointerdown', askOnce);
+    return () => window.removeEventListener('pointerdown', askOnce);
+  }, []);
+
+  const tasksRef = useRef<Task[]>(tasks);
+  tasksRef.current = tasks;
+  useEffect(() => {
+    const dayKeyMap: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+    const notified = new Set<string>();
+
+    const checkTaskStarts = () => {
+      const d = new Date();
+      const nowM = d.getHours() * 60 + d.getMinutes();
+      const today = dayKeyMap[d.getDay()];
+      const dateKey = d.toDateString();
+
+      filterTasksForDay(tasksRef.current, today).forEach((t) => {
+        if (t.completed || parseTimeToMinutes(t.startTime) !== nowM) return;
+        const key = `${dateKey}-${t.id}-${t.startTime}`;
+        if (notified.has(key)) return;
+        notified.add(key);
+
+        const endStr = calculateEndTime(t.startTime, t.durationMinutes);
+        const durStr = formatDuration(t.durationMinutes);
+        sendDeviceNotification(
+          t.title,
+          t.isReminder ? `Reminder at ${t.startTime}` : `Starting now | ${t.startTime} – ${endStr} (${durStr})`,
+          `task-start-${t.id}`
+        );
+      });
+    };
+
+    let interval: ReturnType<typeof setInterval> | undefined;
+    const msToNextMinute = 60000 - (Date.now() % 60000);
+    const timeout = setTimeout(() => {
+      checkTaskStarts();
+      interval = setInterval(checkTaskStarts, 60000);
+    }, msToNextMinute + 50);
+
+    return () => {
+      clearTimeout(timeout);
+      if (interval) clearInterval(interval);
+    };
+  }, []);
+
+  const effectiveCurrentTimeMinutes = settings.simulatedTimeEnabled
+    ? settings.simulatedTimeMinutes
+    : nowMinutes;
+
+  const accentColor = settings.accentColor || '#007AFF';
+  const uniformEnabled = settings.uniformTaskColorEnabled || false;
+  const uniformColor = settings.uniformTaskColor || accentColor;
+
+  const currentDayTasks = useMemo(() => {
+    const list = filterTasksForDay(tasks, selectedDay);
+    if (uniformEnabled) {
+      return list.map((t) => ({ ...t, color: uniformColor }));
+    }
+    return list;
+  }, [tasks, selectedDay, uniformEnabled, uniformColor]);
+
+  const clashMap = useMemo(() => {
+    return detectAllClashes(currentDayTasks);
+  }, [currentDayTasks]);
+
+  const currentDayBlocks = useMemo(() => {
+    return filterBlocksForDay(blocks, selectedDay);
+  }, [blocks, selectedDay]);
+
+  const timelineItems = useMemo(() => {
+    return buildTimelineWithGaps(currentDayTasks, 15);
+  }, [currentDayTasks]);
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => {
+      setToastMessage(null);
+    }, 3000);
+  };
+
+  const executeTaskMove = (taskId: string, newStartTime: string, targetBlockId?: string | null) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === taskId) {
+          return {
+            ...t,
+            startTime: newStartTime,
+            blockId: targetBlockId !== undefined ? targetBlockId : t.blockId,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  const handleUpdateTaskTime = (taskId: string, newStartTime: string) => {
+    executeTaskMove(taskId, newStartTime);
+  };
+
+  const handleMoveBlock = (blockId: string, deltaMinutes: number) => {
+    if (deltaMinutes === 0) return;
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.blockId === blockId && t.days.includes(selectedDay)) {
+          const currentM = parseTimeToMinutes(t.startTime);
+          const newM = Math.max(0, Math.min(1440 - t.durationMinutes, currentM + deltaMinutes));
+          const snappedM = Math.round(newM / 5) * 5;
+          return {
+            ...t,
+            startTime: minutesToTimeString(snappedM, true),
+          };
+        }
+        return t;
+      })
+    );
+    showToast('Shifted routine block');
+  };
+
+  const handleDropOutsideBlocks = (e: React.DragEvent) => {
+    e.preventDefault();
+    const taskId = e.dataTransfer.getData('text/plain');
+    if (!taskId) return;
+    const task = tasks.find((t) => t.id === taskId);
+    if (task && task.blockId !== null) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === taskId ? { ...t, blockId: null } : t))
+      );
+      showToast(`Removed "${task.title}" from block`);
+    }
+  };
+
+  const handleToggleComplete = (taskId: string) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === taskId) {
+          const nextCompleted = !t.completed;
+          return {
+            ...t,
+            completed: nextCompleted,
+            completedAt: nextCompleted ? new Date().toISOString() : undefined,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  const handleToggleSubtask = (taskId: string, subtaskId: string) => {
+    setTasks((prev) =>
+      prev.map((t) => {
+        if (t.id === taskId) {
+          const updatedSubtasks = t.subtasks.map((st) =>
+            st.id === subtaskId ? { ...st, completed: !st.completed } : st
+          );
+          const allCompleted = updatedSubtasks.length > 0 && updatedSubtasks.every((st) => st.completed);
+          return {
+            ...t,
+            subtasks: updatedSubtasks,
+            completed: allCompleted ? true : t.completed,
+          };
+        }
+        return t;
+      })
+    );
+  };
+
+  const handleSaveTask = (taskData: Omit<Task, 'id'>, existingId?: string) => {
+    const finalColor = uniformEnabled ? uniformColor : taskData.color;
+    const finalData = { ...taskData, color: finalColor };
+
+    if (existingId) {
+      setTasks((prev) =>
+        prev.map((t) => (t.id === existingId ? { ...t, ...finalData, id: existingId } : t))
+      );
+      showToast(`Updated "${finalData.title}"`);
+    } else {
+      const newTask: Task = {
+        ...finalData,
+        id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      };
+      setTasks((prev) => [...prev, newTask]);
+      showToast(`Added "${finalData.title}"`);
+    }
+
+    const currentTemplates = settings.taskTemplates || [];
+    const templateIndex = currentTemplates.findIndex(
+      (tt) => tt.title.toLowerCase() === finalData.title.toLowerCase()
+    );
+    const newTemplate: TaskTemplate = {
+      title: finalData.title,
+      color: finalData.color,
+      icon: finalData.icon,
+      durationMinutes: finalData.durationMinutes,
+      isReminder: finalData.isReminder,
+    };
+
+    let updatedTemplates = [...currentTemplates];
+    if (templateIndex >= 0) {
+      updatedTemplates[templateIndex] = newTemplate;
+    } else {
+      updatedTemplates = [newTemplate, ...updatedTemplates];
+    }
+
+    setSettings((prev) => ({
+      ...prev,
+      taskTemplates: updatedTemplates,
+      rememberedTasks: Array.from(new Set([finalData.title, ...(prev.rememberedTasks || [])])),
+    }));
+  };
+
+  const handleDeleteTask = (taskId: string) => {
+    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    showToast('Task deleted');
+  };
+
+  const handleCopyTask = (task: Task) => {
+    const clonedTask: Task = {
+      ...task,
+      id: `task-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      title: `${task.title} (Copy)`,
+      completed: false,
+      days: [selectedDay],
+      subtasks: task.subtasks.map((st) => ({
+        ...st,
+        id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        completed: false,
+      })),
+    };
+    setTasks((prev) => [...prev, clonedTask]);
+    showToast(`Copied "${task.title}"`);
+  };
+
+  const handleSaveBlock = (blockData: Omit<RoutineBlock, 'id'>, existingId?: string, assignedTaskIds?: string[]) => {
+    let blockId = existingId;
+    if (existingId) {
+      setBlocks((prev) =>
+        prev.map((b) => (b.id === existingId ? { ...b, ...blockData, id: existingId } : b))
+      );
+      showToast(`Updated block "${blockData.name}"`);
+    } else {
+      const newBlock: RoutineBlock = {
+        ...blockData,
+        id: `block-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+      };
+      blockId = newBlock.id;
+      setBlocks((prev) => [...prev, newBlock]);
+      showToast(`Created block "${blockData.name}"`);
+    }
+
+    if (assignedTaskIds && blockId) {
+      setTasks((prev) =>
+        prev.map((t) => ({
+          ...t,
+          blockId: assignedTaskIds.includes(t.id) ? blockId : t.blockId === blockId ? null : t.blockId,
+        }))
+      );
+    }
+  };
+
+  const handleDeleteBlock = (blockId: string) => {
+    setBlocks((prev) => prev.filter((b) => b.id !== blockId));
+    setTasks((prev) =>
+      prev.map((t) => (t.blockId === blockId ? { ...t, blockId: null } : t))
+    );
+    showToast('Routine block removed');
+  };
+
+  const handleCopyBlock = (block: RoutineBlock) => {
+    const res = duplicateBlockSchedule(tasks, blocks, block.id, selectedDay);
+    setTasks(res.tasks);
+    setBlocks(res.blocks);
+    showToast(`Copied block "${block.name}"`);
+  };
+
+  const handleCopyWholeDay = (sourceDay: DayOfWeek) => {
+    setClipboardDay(sourceDay);
+    showToast(`Copied all tasks from ${sourceDay.toUpperCase()}`);
+  };
+
+  const handlePasteWholeDay = (targetDay: DayOfWeek) => {
+    if (!clipboardDay) return;
+    const res = duplicateDaySchedule(tasks, blocks, clipboardDay, targetDay);
+    setTasks(res.tasks);
+    setBlocks(res.blocks);
+    showToast(`Pasted schedule to ${targetDay.toUpperCase()}`);
+  };
+
+  const handleQuickAddGap = (startTime: string, duration: number) => {
+    setEditingTask(null);
+    setModalInitialTemplate(null);
+    setModalInitialTime(startTime);
+    setModalInitialDuration(duration);
+    setModalInitialBlockId(null);
+    setIsTaskModalOpen(true);
+  };
+
+  const handleResetDefaultSchedule = () => {
+    setTasks(DEFAULT_TASKS);
+    setBlocks(DEFAULT_BLOCKS);
+    showToast('Reset to sample schedule');
+  };
+
+  const renderTimeline = () => {
+    if (timelineItems.length === 0) {
+      return (
+        <div className="py-12 px-6 text-center select-none">
+          <div className="w-12 h-12 mx-auto mb-2.5 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-400 dark:text-zinc-500">
+            <Calendar className="w-5 h-5" />
+          </div>
+          <h3 className="text-xs font-semibold text-slate-800 dark:text-zinc-200">
+            No activities scheduled for {DAYS_OF_WEEK.find((d) => d.key === selectedDay)?.label}
+          </h3>
+
+          <div className="mt-3 flex items-center justify-center gap-2">
+            <button
+              onClick={() => setIsTaskPickerOpen(true)}
+              className="text-xs bg-blue-600 text-white font-medium px-3 py-1.5 rounded-xl shadow-xs hover:bg-blue-700 transition-colors"
+            >
+              Add Activity
+            </button>
+            {clipboardDay && (
+              <button
+                onClick={() => handlePasteWholeDay(selectedDay)}
+                className="text-xs bg-slate-100 dark:bg-zinc-800 text-slate-700 dark:text-zinc-300 font-medium px-3 py-1.5 rounded-xl hover:bg-slate-200 transition-colors flex items-center gap-1.5"
+              >
+                <Copy className="w-3 h-3" />
+                <span>Paste from {clipboardDay.toUpperCase()}</span>
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    const renderedElements: React.ReactNode[] = [];
+    let currentBlockClusterId: string | null = null;
+    let currentBlockItems: Task[] = [];
+    let lastColor: string | undefined = undefined;
+    let lastTaskEndM: number | null = null;
+
+    const flushBlockCluster = () => {
+      if (currentBlockClusterId && currentBlockItems.length > 0) {
+        const blk = blocks.find((b) => b.id === currentBlockClusterId);
+        if (blk) {
+          const blockTasks = [...currentBlockItems];
+          renderedElements.push(
+            <RoutineBlockContainer
+              key={`block-container-${blk.id}-${blockTasks[0].id}`}
+              block={blk}
+              tasks={blockTasks}
+              use24Hour={settings.use24Hour}
+              accentColor={accentColor}
+              onMoveBlock={handleMoveBlock}
+              onCopyBlock={handleCopyBlock}
+              onEditBlock={(b) => {
+                setEditingBlock(b);
+                setIsBlockModalOpen(true);
+              }}
+              onDeleteBlock={handleDeleteBlock}
+              onAddTaskToBlock={(blockId) => {
+                setEditingTask(null);
+                setModalInitialBlockId(blockId);
+                const lastTask = blockTasks[blockTasks.length - 1];
+                if (lastTask) {
+                  const end = parseTimeToMinutes(lastTask.startTime) + lastTask.durationMinutes;
+                  setModalInitialTime(minutesToTimeString(end, true));
+                }
+                setIsTaskPickerOpen(true);
+              }}
+            >
+              {blockTasks.map((t, idx) => {
+                const prevColor = idx === 0 ? (lastColor || blk.color) : blockTasks[idx - 1].color;
+                const taskStartM = parseTimeToMinutes(t.startTime);
+                const isOverlappingPrev = lastTaskEndM !== null && taskStartM < lastTaskEndM;
+                lastTaskEndM = taskStartM + t.durationMinutes;
+                return (
+                  <TimelineTask
+                    key={t.id}
+                    task={t}
+                    currentTimeMinutes={effectiveCurrentTimeMinutes}
+                    use24Hour={settings.use24Hour}
+                    isFirst={idx === 0}
+                    isLast={idx === blockTasks.length - 1}
+                    isOverlappingPrev={isOverlappingPrev}
+                    prevTaskColor={prevColor}
+                    accentColor={accentColor}
+                    onToggleComplete={handleToggleComplete}
+                    onToggleSubtask={handleToggleSubtask}
+                    onEditTask={(taskToEdit) => {
+                      setEditingTask(taskToEdit);
+                      setModalInitialTemplate(null);
+                      setIsTaskModalOpen(true);
+                    }}
+                    onDeleteTask={handleDeleteTask}
+                    onCopyTask={handleCopyTask}
+                    onOpenFocus={(taskToFocus) => setFocusTask(taskToFocus)}
+                    onUpdateTaskTime={handleUpdateTaskTime}
+                  />
+                );
+              })}
+            </RoutineBlockContainer>
+          );
+          if (blockTasks.length > 0) {
+            lastColor = blockTasks[blockTasks.length - 1].color;
+          }
+        }
+        currentBlockClusterId = null;
+        currentBlockItems = [];
+      }
+    };
+
+    timelineItems.forEach((item, index) => {
+      if (item.type === 'gap') {
+        flushBlockCluster();
+        const isPastGap = parseTimeToMinutes(item.endTime) <= effectiveCurrentTimeMinutes;
+        renderedElements.push(
+          <UnallocatedGap
+            key={item.id}
+            startTime={item.startTime}
+            endTime={item.endTime}
+            durationMinutes={item.durationMinutes}
+            prevTaskColor={lastColor}
+            isPast={isPastGap}
+            onQuickAdd={handleQuickAddGap}
+          />
+        );
+        lastTaskEndM = parseTimeToMinutes(item.endTime);
+      } else if (item.type === 'task') {
+        const task = item.task;
+        if (task.blockId) {
+          if (currentBlockClusterId && currentBlockClusterId !== task.blockId) {
+            flushBlockCluster();
+          }
+          currentBlockClusterId = task.blockId;
+          currentBlockItems.push(task);
+        } else {
+          flushBlockCluster();
+          const prevColor = lastColor;
+          lastColor = task.color;
+          const taskStartM = parseTimeToMinutes(task.startTime);
+          const isOverlappingPrev = lastTaskEndM !== null && taskStartM < lastTaskEndM;
+          lastTaskEndM = taskStartM + (task.isReminder ? 0 : task.durationMinutes);
+          renderedElements.push(
+            <TimelineTask
+              key={task.id}
+              task={task}
+              currentTimeMinutes={effectiveCurrentTimeMinutes}
+              use24Hour={settings.use24Hour}
+              isFirst={index === 0}
+              isLast={index === timelineItems.length - 1}
+              isOverlappingPrev={isOverlappingPrev}
+              prevTaskColor={prevColor}
+              accentColor={accentColor}
+              onToggleComplete={handleToggleComplete}
+              onToggleSubtask={handleToggleSubtask}
+              onEditTask={(taskToEdit) => {
+                setEditingTask(taskToEdit);
+                setModalInitialTemplate(null);
+                setIsTaskModalOpen(true);
+              }}
+              onDeleteTask={handleDeleteTask}
+              onCopyTask={handleCopyTask}
+              onOpenFocus={(taskToFocus) => setFocusTask(taskToFocus)}
+              onUpdateTaskTime={handleUpdateTaskTime}
+            />
+          );
+        }
+      }
+    });
+
+    flushBlockCluster();
+
+    return renderedElements;
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-zinc-100 flex flex-col items-center justify-start sm:py-6 selection:bg-blue-500 selection:text-white">
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = 'move';
+        }}
+        onDrop={handleDropOutsideBlocks}
+        className="w-full max-w-lg min-h-screen sm:min-h-[880px] bg-white dark:bg-zinc-950 sm:rounded-[36px] shadow-2xl relative flex flex-col overflow-hidden sm:ring-1 sm:ring-black/10 dark:sm:ring-white/10"
+      >
+        <div className="hidden sm:flex justify-center pt-3 pb-1 select-none">
+          <div className="w-28 h-4 bg-black dark:bg-zinc-800 rounded-full flex items-center justify-center">
+            <div className="w-2.5 h-2.5 rounded-full bg-zinc-900 dark:bg-zinc-950 ml-auto mr-3 ring-1 ring-zinc-700/50" />
+          </div>
+        </div>
+
+        <Header
+          currentDay={selectedDay}
+          currentDate={currentDate}
+          onSelectDay={(day) => setSelectedDay(day)}
+          onSelectDate={(newDate) => {
+            setCurrentDate(newDate);
+            const jsDay = newDate.getDay();
+            const dayKeyMap: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+            setSelectedDay(dayKeyMap[jsDay]);
+          }}
+          onOpenSettings={() => setIsSettingsOpen(true)}
+          onOpenCalendar={() => setIsCalendarOpen(true)}
+          onCopyWholeDay={handleCopyWholeDay}
+          onPasteWholeDay={handlePasteWholeDay}
+          hasClipboard={clipboardDay !== null}
+          clipboardSourceDay={clipboardDay}
+          accentColor={accentColor}
+          simulatedTimeText={
+            settings.simulatedTimeEnabled
+              ? `Sim: ${minutesToTimeString(settings.simulatedTimeMinutes, true)}`
+              : null
+          }
+        />
+
+        <main className="flex-1 overflow-y-auto px-2 py-3 pb-20 overscroll-contain">
+          {renderTimeline()}
+
+          <div className="mt-6 mb-8 px-4 flex flex-col items-center select-none">
+            {/* Straight solid line separator */}
+            <div className="w-full h-[1px] bg-slate-200 dark:bg-zinc-800 my-4" />
+            <div className="text-center mb-4">
+              <span className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 tracking-wider uppercase block">
+                Structura App
+              </span>
+              <span className="text-[9px] text-slate-400 dark:text-zinc-500 font-mono">
+                by kwendig0
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mt-1">
+              {/* Requirement 3: Add Block button corresponds to app theme accent color */}
+              <button
+                onClick={() => setIsBlockPickerOpen(true)}
+                aria-label="Add routine block"
+                style={{ backgroundColor: accentColor }}
+                className="w-13 h-13 rounded-full text-white shadow-lg shadow-black/20 flex items-center justify-center active:scale-90 transition-all cursor-pointer hover:brightness-110"
+                title="Add Routine Block"
+              >
+                <Folder className="w-5 h-5 stroke-[2.5]" />
+              </button>
+
+              <button
+                onClick={() => {
+                  setEditingTask(null);
+                  setModalInitialTemplate(null);
+                  setModalInitialTime('09:00');
+                  setModalInitialDuration(30);
+                  setModalInitialBlockId(null);
+                  setIsTaskPickerOpen(true);
+                }}
+                aria-label="Add task"
+                style={{ backgroundColor: accentColor }}
+                className="w-13 h-13 rounded-full text-white shadow-xl shadow-black/10 flex items-center justify-center active:scale-90 transition-all cursor-pointer hover:brightness-110"
+                title="Add Task"
+              >
+                <Plus className="w-6 h-6 stroke-[2.5]" />
+              </button>
+            </div>
+          </div>
+        </main>
+
+        {toastMessage && (
+          <div className="fixed sm:absolute bottom-20 left-1/2 -translate-x-1/2 z-40 bg-zinc-900/95 text-white text-xs font-medium px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
+            <Sparkles className="w-3.5 h-3.5 text-blue-400" />
+            <span>{toastMessage}</span>
+          </div>
+        )}
+      </div>
+
+      <TaskPickerModal
+        isOpen={isTaskPickerOpen}
+        onClose={() => setIsTaskPickerOpen(false)}
+        onSelectTaskTemplate={(template) => {
+          setIsTaskPickerOpen(false);
+          setEditingTask(null);
+          setModalInitialTemplate(template);
+          setModalInitialTime('09:00');
+          setModalInitialBlockId(null);
+          setIsTaskModalOpen(true);
+        }}
+        taskTemplates={settings.taskTemplates || []}
+        existingTasks={tasks}
+        currentDay={selectedDay}
+        accentColor={accentColor}
+      />
+
+      <TaskModal
+        isOpen={isTaskModalOpen}
+        onClose={() => setIsTaskModalOpen(false)}
+        onSaveTask={handleSaveTask}
+        editingTask={editingTask}
+        currentDay={selectedDay}
+        taskTemplates={settings.taskTemplates || []}
+        quickDurations={settings.quickDurations}
+        blocks={currentDayBlocks}
+        initialTemplate={modalInitialTemplate}
+        initialStartTime={modalInitialTime}
+        initialDuration={modalInitialDuration}
+        initialBlockId={modalInitialBlockId}
+        accentColor={accentColor}
+        uniformTaskColorEnabled={uniformEnabled}
+        uniformTaskColor={uniformColor}
+        savedCustomHexes={settings.savedCustomHexes || []}
+        onSaveCustomHex={(hex) => {
+          const currentHexes = settings.savedCustomHexes || [];
+          if (!currentHexes.includes(hex)) {
+            setSettings((prev) => ({
+              ...prev,
+              savedCustomHexes: [...currentHexes, hex],
+            }));
+            showToast(`Saved custom hex ${hex}`);
+          }
+        }}
+        onDeleteCustomHex={(hex) => {
+          const currentHexes = settings.savedCustomHexes || [];
+          setSettings((prev) => ({
+            ...prev,
+            savedCustomHexes: currentHexes.filter((h) => h !== hex),
+          }));
+          showToast(`Deleted custom hex ${hex}`);
+        }}
+        onOpenFocus={(t) => setFocusTask(t)}
+      />
+
+      <BlockPickerModal
+        isOpen={isBlockPickerOpen}
+        onClose={() => setIsBlockPickerOpen(false)}
+        blocks={currentDayBlocks}
+        tasks={currentDayTasks}
+        currentDay={selectedDay}
+        onSelectExistingBlock={(blk) => {
+          setEditingBlock(blk);
+          setIsBlockModalOpen(true);
+        }}
+        onCreateNewBlock={() => {
+          setEditingBlock(null);
+          setIsBlockModalOpen(true);
+        }}
+      />
+
+      <RoutineBlockModal
+        isOpen={isBlockModalOpen}
+        onClose={() => setIsBlockModalOpen(false)}
+        onSaveBlock={handleSaveBlock}
+        editingBlock={editingBlock}
+        currentDay={selectedDay}
+        allTasks={tasks}
+      />
+
+      <SettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        settings={settings}
+        onUpdateSettings={(newSettings) => setSettings(newSettings)}
+        onResetDefaultSchedule={handleResetDefaultSchedule}
+      />
+
+      <CalendarModal
+        isOpen={isCalendarOpen}
+        onClose={() => setIsCalendarOpen(false)}
+        selectedDate={currentDate}
+        onSelectDate={(newDate) => {
+          setCurrentDate(newDate);
+          const jsDay = newDate.getDay();
+          const dayKeyMap: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+          setSelectedDay(dayKeyMap[jsDay]);
+        }}
+        tasks={tasks}
+      />
+
+      <FocusModeModal
+        isOpen={focusTask !== null}
+        onClose={() => setFocusTask(null)}
+        task={focusTask}
+        currentTimeMinutes={effectiveCurrentTimeMinutes}
+        accentColor={accentColor}
+        onToggleComplete={handleToggleComplete}
+        onToggleSubtask={handleToggleSubtask}
+      />
+    </div>
+  );
+}

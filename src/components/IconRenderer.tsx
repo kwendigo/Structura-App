@@ -1,0 +1,318 @@
+/**
+ * @license
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+import React from 'react';
+import {
+  Sun,
+  Moon,
+  Sunrise,
+  Sunset,
+  Coffee,
+  Dumbbell,
+  BookOpen,
+  Code,
+  Laptop,
+  Music,
+  Utensils,
+  Heart,
+  Smile,
+  Sparkles,
+  Briefcase,
+  Headphones,
+  Footprints,
+  Pencil,
+  Bed,
+  ShowerHead,
+  Shirt,
+  Mail,
+  Phone,
+  CheckSquare,
+  Presentation,
+  Brain,
+  FileText,
+  Search,
+  GraduationCap,
+  Library,
+  Bookmark,
+  Globe,
+  Bike,
+  Trophy,
+  Apple,
+  Activity,
+  Flame,
+  Wine,
+  Pizza,
+  Sandwich,
+  Beer,
+  Cake,
+  Cookie,
+  MessageCircle,
+  Users,
+  PartyPopper,
+  Gamepad2,
+  Tv,
+  Camera,
+  Palette,
+  Plane,
+  Car,
+  Bus,
+  Train,
+  MapPin,
+  Compass,
+  Navigation,
+  Luggage,
+  Home,
+  ShoppingBag,
+  ShoppingCart,
+  Trash2,
+  Wrench,
+  Dog,
+  Cat,
+  Key,
+  Flower2,
+  HeartHandshake,
+  Eye,
+  CloudSun,
+  Glasses,
+  Timer,
+  Brush,
+  LucideProps,
+  Bath,
+  Pill,
+  HeartPulse,
+  Stethoscope,
+  GlassWater,
+  Calculator,
+  PieChart,
+  Folder,
+  CreditCard,
+  Coins,
+  Lightbulb,
+  Flag,
+  FileCode,
+  Atom,
+  Microscope,
+  PenTool,
+  Medal,
+  Scale,
+  Waves,
+  Mountain,
+  UtensilsCrossed,
+  Soup,
+  CupSoda,
+  Fish,
+  Drumstick,
+  Carrot,
+  Croissant,
+  IceCream,
+  Gift,
+  Film,
+  Mic,
+  Radio,
+  Sofa,
+  Lamp,
+  Hammer,
+  Paintbrush,
+  Package,
+  Ship,
+  Fuel,
+  Ticket,
+  Tent,
+  Umbrella,
+  Trees,
+  Leaf,
+  PawPrint,
+  Bone,
+  MessagesSquare,
+  AlarmClock,
+  Target,
+} from 'lucide-react';
+
+export interface IconItem {
+  id: string;
+  label: string;
+  category: string;
+  icon: React.FC<LucideProps>;
+}
+
+export const AVAILABLE_ICONS: IconItem[] = [
+  { id: 'sunrise', label: 'Sunrise', category: 'Routine', icon: Sunrise },
+  { id: 'sun', label: 'Sun', category: 'Routine', icon: Sun },
+  { id: 'cloudsun', label: 'Morning Sun', category: 'Routine', icon: CloudSun },
+  { id: 'alarmclock', label: 'Wake Up', category: 'Routine', icon: AlarmClock },
+  { id: 'shower', label: 'Shower', category: 'Routine', icon: ShowerHead },
+  { id: 'bath', label: 'Bath', category: 'Routine', icon: Bath },
+  { id: 'coffee', label: 'Coffee', category: 'Routine', icon: Coffee },
+  { id: 'glasswater', label: 'Drink Water', category: 'Routine', icon: GlassWater },
+  { id: 'pill', label: 'Medicine / Vitamins', category: 'Routine', icon: Pill },
+  { id: 'bed', label: 'Sleep / Bed', category: 'Routine', icon: Bed },
+  { id: 'shirt', label: 'Dress Up', category: 'Routine', icon: Shirt },
+  { id: 'glasses', label: 'Prep', category: 'Routine', icon: Glasses },
+  { id: 'sparkles', label: 'Fresh / Hygiene', category: 'Routine', icon: Sparkles },
+
+  { id: 'laptop', label: 'Laptop', category: 'Work', icon: Laptop },
+  { id: 'code', label: 'Coding', category: 'Work', icon: Code },
+  { id: 'briefcase', label: 'Business', category: 'Work', icon: Briefcase },
+  { id: 'mail', label: 'Email', category: 'Work', icon: Mail },
+  { id: 'phone', label: 'Call', category: 'Work', icon: Phone },
+  { id: 'presentation', label: 'Meeting', category: 'Work', icon: Presentation },
+  { id: 'brain', label: 'Deep Focus', category: 'Work', icon: Brain },
+  { id: 'filetext', label: 'Document', category: 'Work', icon: FileText },
+  { id: 'folder', label: 'Projects', category: 'Work', icon: Folder },
+  { id: 'target', label: 'Goal', category: 'Work', icon: Target },
+  { id: 'timer', label: 'Timer', category: 'Work', icon: Timer },
+  { id: 'checksquare', label: 'To-Do', category: 'Work', icon: CheckSquare },
+  { id: 'calculator', label: 'Finance / Math', category: 'Work', icon: Calculator },
+  { id: 'piechart', label: 'Analytics', category: 'Work', icon: PieChart },
+  { id: 'creditcard', label: 'Expense / Pay', category: 'Work', icon: CreditCard },
+  { id: 'coins', label: 'Budget', category: 'Work', icon: Coins },
+  { id: 'lightbulb', label: 'Idea', category: 'Work', icon: Lightbulb },
+  { id: 'search', label: 'Research', category: 'Work', icon: Search },
+  { id: 'flag', label: 'Milestone / Deadline', category: 'Work', icon: Flag },
+
+  { id: 'book', label: 'Reading', category: 'Study', icon: BookOpen },
+  { id: 'pencil', label: 'Writing', category: 'Study', icon: Pencil },
+  { id: 'graduationcap', label: 'Class / School', category: 'Study', icon: GraduationCap },
+  { id: 'library', label: 'Library', category: 'Study', icon: Library },
+  { id: 'bookmark', label: 'Study Note', category: 'Study', icon: Bookmark },
+  { id: 'filecode', label: 'Programming Study', category: 'Study', icon: FileCode },
+  { id: 'atom', label: 'Physics / STEM', category: 'Study', icon: Atom },
+  { id: 'microscope', label: 'Science / Lab', category: 'Study', icon: Microscope },
+  { id: 'pentool', label: 'Design', category: 'Study', icon: PenTool },
+  { id: 'globe', label: 'Languages', category: 'Study', icon: Globe },
+
+  { id: 'dumbbell', label: 'Workout / Gym', category: 'Fitness', icon: Dumbbell },
+  { id: 'footprints', label: 'Walk / Steps', category: 'Fitness', icon: Footprints },
+  { id: 'bike', label: 'Cycling', category: 'Fitness', icon: Bike },
+  { id: 'heart', label: 'Cardio', category: 'Fitness', icon: Heart },
+  { id: 'heartpulse', label: 'Health Check', category: 'Fitness', icon: HeartPulse },
+  { id: 'activity', label: 'Exercise', category: 'Fitness', icon: Activity },
+  { id: 'waves', label: 'Swimming', category: 'Fitness', icon: Waves },
+  { id: 'mountain', label: 'Hiking', category: 'Fitness', icon: Mountain },
+  { id: 'flame', label: 'Calorie Burn', category: 'Fitness', icon: Flame },
+  { id: 'trophy', label: 'Achievement', category: 'Fitness', icon: Trophy },
+  { id: 'medal', label: 'Competition', category: 'Fitness', icon: Medal },
+  { id: 'scale', label: 'Weigh-in', category: 'Fitness', icon: Scale },
+  { id: 'apple', label: 'Nutrition', category: 'Fitness', icon: Apple },
+
+  { id: 'utensils', label: 'Dining', category: 'Food', icon: Utensils },
+  { id: 'utensilscrossed', label: 'Cook / Chef', category: 'Food', icon: UtensilsCrossed },
+  { id: 'pizza', label: 'Pizza / Lunch', category: 'Food', icon: Pizza },
+  { id: 'sandwich', label: 'Snack / Sandwich', category: 'Food', icon: Sandwich },
+  { id: 'soup', label: 'Warm Meal / Soup', category: 'Food', icon: Soup },
+  { id: 'croissant', label: 'Bakery / Breakfast', category: 'Food', icon: Croissant },
+  { id: 'cake', label: 'Dessert', category: 'Food', icon: Cake },
+  { id: 'cookie', label: 'Treat', category: 'Food', icon: Cookie },
+  { id: 'icecream', label: 'Ice Cream', category: 'Food', icon: IceCream },
+  { id: 'fish', label: 'Seafood', category: 'Food', icon: Fish },
+  { id: 'drumstick', label: 'Dinner / Poultry', category: 'Food', icon: Drumstick },
+  { id: 'carrot', label: 'Vegetables / Salad', category: 'Food', icon: Carrot },
+  { id: 'cupsoda', label: 'Soft Drink', category: 'Food', icon: CupSoda },
+  { id: 'wine', label: 'Evening Drink / Wine', category: 'Food', icon: Wine },
+  { id: 'beer', label: 'Social Drink / Beer', category: 'Food', icon: Beer },
+
+  { id: 'users', label: 'Friends / Group', category: 'Social', icon: Users },
+  { id: 'messagecircle', label: 'Chat', category: 'Social', icon: MessageCircle },
+  { id: 'messagessquare', label: 'Discussion', category: 'Social', icon: MessagesSquare },
+  { id: 'smile', label: 'Hangout', category: 'Social', icon: Smile },
+  { id: 'partypopper', label: 'Party / Event', category: 'Social', icon: PartyPopper },
+  { id: 'gift', label: 'Gift / Birthday', category: 'Social', icon: Gift },
+  { id: 'music', label: 'Music', category: 'Leisure', icon: Music },
+  { id: 'headphones', label: 'Podcast / Audio', category: 'Leisure', icon: Headphones },
+  { id: 'gamepad', label: 'Gaming', category: 'Leisure', icon: Gamepad2 },
+  { id: 'tv', label: 'Movie / Show', category: 'Leisure', icon: Tv },
+  { id: 'film', label: 'Cinema / Video', category: 'Leisure', icon: Film },
+  { id: 'camera', label: 'Photography', category: 'Leisure', icon: Camera },
+  { id: 'mic', label: 'Singing / Recording', category: 'Leisure', icon: Mic },
+  { id: 'radio', label: 'Radio', category: 'Leisure', icon: Radio },
+  { id: 'palette', label: 'Art / Creative', category: 'Leisure', icon: Palette },
+  { id: 'brush', label: 'Hobby', category: 'Leisure', icon: Brush },
+
+  { id: 'car', label: 'Commute / Drive', category: 'Travel', icon: Car },
+  { id: 'bus', label: 'Bus', category: 'Travel', icon: Bus },
+  { id: 'train', label: 'Train / Metro', category: 'Travel', icon: Train },
+  { id: 'plane', label: 'Flight', category: 'Travel', icon: Plane },
+  { id: 'ship', label: 'Ferry / Boat', category: 'Travel', icon: Ship },
+  { id: 'mappin', label: 'Location / Errands', category: 'Travel', icon: MapPin },
+  { id: 'navigation', label: 'Travel Route', category: 'Travel', icon: Navigation },
+  { id: 'compass', label: 'Explore', category: 'Travel', icon: Compass },
+  { id: 'luggage', label: 'Trip / Packing', category: 'Travel', icon: Luggage },
+  { id: 'fuel', label: 'Refuel / Gas', category: 'Travel', icon: Fuel },
+  { id: 'ticket', label: 'Ticket / Boarding', category: 'Travel', icon: Ticket },
+  { id: 'tent', label: 'Camping', category: 'Travel', icon: Tent },
+  { id: 'trees', label: 'Nature / Outdoors', category: 'Travel', icon: Trees },
+
+  { id: 'home', label: 'Home', category: 'Home', icon: Home },
+  { id: 'sofa', label: 'Rest / Living Room', category: 'Home', icon: Sofa },
+  { id: 'lamp', label: 'Night Light', category: 'Home', icon: Lamp },
+  { id: 'shoppingcart', label: 'Groceries', category: 'Home', icon: ShoppingCart },
+  { id: 'shoppingbag', label: 'Shopping', category: 'Home', icon: ShoppingBag },
+  { id: 'package', label: 'Delivery / Mail', category: 'Home', icon: Package },
+  { id: 'trash', label: 'Cleaning / Trash', category: 'Home', icon: Trash2 },
+  { id: 'wrench', label: 'Maintenance', category: 'Home', icon: Wrench },
+  { id: 'hammer', label: 'Fix / DIY', category: 'Home', icon: Hammer },
+  { id: 'paintbrush', label: 'Decorate', category: 'Home', icon: Paintbrush },
+  { id: 'dog', label: 'Pet Walk / Dog', category: 'Home', icon: Dog },
+  { id: 'cat', label: 'Cat Care', category: 'Home', icon: Cat },
+  { id: 'pawprint', label: 'Pet Time', category: 'Home', icon: PawPrint },
+  { id: 'bone', label: 'Pet Treat', category: 'Home', icon: Bone },
+  { id: 'key', label: 'Chores / Locks', category: 'Home', icon: Key },
+
+  { id: 'sunset', label: 'Sunset', category: 'Mindfulness', icon: Sunset },
+  { id: 'moon', label: 'Night Routine', category: 'Mindfulness', icon: Moon },
+  { id: 'flower', label: 'Meditation', category: 'Mindfulness', icon: Flower2 },
+  { id: 'leaf', label: 'Peace / Nature', category: 'Mindfulness', icon: Leaf },
+  { id: 'umbrella', label: 'Self Care', category: 'Mindfulness', icon: Umbrella },
+  { id: 'hearthandshake', label: 'Gratitude', category: 'Mindfulness', icon: HeartHandshake },
+  { id: 'eye', label: 'Reflection', category: 'Mindfulness', icon: Eye },
+  { id: 'zap', label: 'Energy Recharge', category: 'Mindfulness', icon: Sparkles },
+];
+
+const iconMap: Record<string, React.FC<LucideProps>> = {};
+AVAILABLE_ICONS.forEach((item) => {
+  iconMap[item.id.toLowerCase()] = item.icon;
+});
+iconMap['people'] = Users;
+iconMap['travel'] = Navigation;
+iconMap['studying'] = Pencil;
+iconMap['study'] = BookOpen;
+iconMap['reading'] = BookOpen;
+iconMap['class'] = GraduationCap;
+iconMap['school'] = GraduationCap;
+iconMap['dinner'] = Utensils;
+iconMap['meal'] = Utensils;
+iconMap['cooking'] = UtensilsCrossed;
+iconMap['cook'] = UtensilsCrossed;
+iconMap['breakfast'] = Croissant;
+iconMap['lunch'] = Pizza;
+iconMap['water'] = GlassWater;
+iconMap['drink'] = GlassWater;
+iconMap['gym'] = Dumbbell;
+iconMap['workout'] = Dumbbell;
+iconMap['run'] = Footprints;
+iconMap['running'] = Footprints;
+iconMap['walk'] = Footprints;
+iconMap['walking'] = Footprints;
+iconMap['meditate'] = Flower2;
+iconMap['meditation'] = Flower2;
+iconMap['clean'] = Trash2;
+iconMap['cleaning'] = Trash2;
+iconMap['movie'] = Film;
+iconMap['netflix'] = Tv;
+iconMap['sleep'] = Bed;
+iconMap['vitamins'] = Pill;
+iconMap['medicine'] = Pill;
+iconMap['doctor'] = Stethoscope;
+iconMap['health'] = HeartPulse;
+
+interface IconRendererProps extends LucideProps {
+  name: string;
+}
+
+export const IconRenderer: React.FC<IconRendererProps> = ({ name, ...props }) => {
+  const cleanName = (name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const Component = iconMap[cleanName] || Sparkles;
+  return <Component {...props} />;
+};

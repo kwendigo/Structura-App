@@ -1,0 +1,6 @@
+{
+  "name": "Structura - iOS Daily Routine & Timeline",
+  "description": "An iOS-style daily schedule and routine structuring app featuring vertical progress capsules, routine blocks, subtasks, focus mode, notifications, and cross-device sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
