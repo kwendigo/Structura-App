@@ -24,14 +24,14 @@ import {
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { minutesToTimeString, formatDuration } from '../utils/scheduleLogic';
-import { APPLE_PALETTE, RECORDED_TASKS_LIBRARY } from '../utils/storage';
+import { APPLE_PALETTE } from '../utils/storage';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: AppSettings;
   onUpdateSettings: (newSettings: AppSettings) => void;
-  onResetDefaultSchedule: () => void;
+  onClearSchedule: () => void;
 }
 
 type SettingsSection = 'main' | 'customisation' | 'recorded_tasks' | 'notifications' | 'widgets' | 'icloud';
@@ -41,7 +41,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   onClose,
   settings,
   onUpdateSettings,
-  onResetDefaultSchedule,
+  onClearSchedule,
 }) => {
   const [activeSection, setActiveSection] = useState<SettingsSection>('main');
   const [newSuggestion, setNewSuggestion] = useState('');
@@ -58,9 +58,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
   if (!isOpen) return null;
 
-  const recordedList = settings.rememberedTasks && settings.rememberedTasks.length > 0
-    ? settings.rememberedTasks
-    : RECORDED_TASKS_LIBRARY;
+  const recordedList = settings.rememberedTasks || [];
 
   const filteredTasks = recordedList.filter((task) => {
     const matchesSearch = task.toLowerCase().includes(taskSearchQuery.toLowerCase());
@@ -311,8 +309,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirm('Reset to initial demo daily routine schedule?')) {
-                      onResetDefaultSchedule();
+                    if (confirm('Clear all tasks and routine blocks from your schedule?')) {
+                      onClearSchedule();
                       onClose();
                     }
                   }}
@@ -322,7 +320,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     <div className="w-8 h-8 rounded-xl bg-rose-500/15 text-rose-500 flex items-center justify-center shadow-xs">
                       <RotateCcw className="w-4 h-4" />
                     </div>
-                    <span className="text-xs font-semibold text-rose-600">Reset to Sample Schedule</span>
+                    <span className="text-xs font-semibold text-rose-600">Clear Schedule</span>
                   </div>
                 </button>
               </div>

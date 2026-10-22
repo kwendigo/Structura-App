@@ -44,6 +44,8 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [dayMenuDay, setDayMenuDay] = useState<DayOfWeek | null>(null);
   const longPressTimeout = useRef<NodeJS.Timeout | null>(null);
+  const weekTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const ignoreDayClick = useRef(false);
 
   const weekDays = getWeekDays(currentDate);
 
@@ -60,6 +62,33 @@ export const Header: React.FC<HeaderProps> = ({
     const nextDate = new Date(currentDate);
     nextDate.setDate(currentDate.getDate() + deltaDays);
     onSelectDate(nextDate);
+  };
+
+  const handleWeekTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
+    if (event.touches.length !== 1) {
+      weekTouchStart.current = null;
+      return;
+    }
+    weekTouchStart.current = {
+      x: event.touches[0].clientX,
+      y: event.touches[0].clientY,
+    };
+  };
+
+  const handleWeekTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
+    const start = weekTouchStart.current;
+    weekTouchStart.current = null;
+    if (!start || event.changedTouches.length !== 1) return;
+
+    const deltaX = event.changedTouches[0].clientX - start.x;
+    const deltaY = event.changedTouches[0].clientY - start.y;
+    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+
+    ignoreDayClick.current = true;
+    window.setTimeout(() => {
+      ignoreDayClick.current = false;
+    }, 300);
+    handleShiftWeek(deltaX < 0 ? 7 : -7);
   };
 
   const handleDayTouchStart = (day: DayOfWeek) => {
@@ -146,7 +175,14 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-7 gap-1 text-center py-1">
+      <div
+        className="grid grid-cols-7 gap-1 text-center py-1 touch-pan-y"
+        onTouchStart={handleWeekTouchStart}
+        onTouchEnd={handleWeekTouchEnd}
+        onTouchCancel={() => {
+          weekTouchStart.current = null;
+        }}
+      >
         {weekDays.map(({ key, short, dayNumber, date }) => {
           const isSelected = currentDay === key;
           const isCurrentDay = isToday(date);
@@ -156,6 +192,10 @@ export const Header: React.FC<HeaderProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  if (ignoreDayClick.current) {
+                    ignoreDayClick.current = false;
+                    return;
+                  }
                   onSelectDay(key);
                   onSelectDate(date);
                 }}
