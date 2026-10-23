@@ -6,6 +6,7 @@
 import React, { useState } from 'react';
 import { X, ChevronLeft, ChevronRight } from 'lucide-react';
 import { DayOfWeek, Task } from '../types';
+import { filterTasksForDay, formatDateKey } from '../utils/scheduleLogic';
 
 interface CalendarModalProps {
   isOpen: boolean;
@@ -123,7 +124,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = ({
             const dayKeyIndex = jsDay === 0 ? 6 : jsDay - 1;
             const dayOfWeekKey = dayKeys[dayKeyIndex];
 
-            const dayTasks = tasks.filter((t) => t.days.includes(dayOfWeekKey));
+            const dayTasks = filterTasksForDay(tasks, dayOfWeekKey, formatDateKey(thisDate));
             const hasTasks = dayTasks.length > 0;
 
             return (

@@ -13,15 +13,16 @@ import {
   Check,
   Palette,
   MoreHorizontal,
+  Copy,
   RotateCw,
   Target,
   Bookmark,
   Bell,
 } from 'lucide-react';
 import { Task, Subtask, DayOfWeek, TaskTemplate } from '../types';
-import { DAYS_OF_WEEK, formatDuration, calculateEndTime } from '../utils/scheduleLogic';
+import { DAYS_OF_WEEK, formatDateKey, formatDuration, calculateEndTime } from '../utils/scheduleLogic';
 import { APPLE_PALETTE } from '../utils/storage';
-import { AVAILABLE_ICONS, IconRenderer } from './IconRenderer';
+import { AVAILABLE_ICONS, ICON_CATEGORIES, IconRenderer, isFontAwesomeIcon } from './IconRenderer';
 
 const formatDurationOption = (minutes: number) => {
   if (minutes < 60) return `${minutes}m`;
@@ -32,8 +33,11 @@ interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSaveTask: (taskData: Omit<Task, 'id'>, existingId?: string) => void;
+  onDuplicateTask: (task: Task) => void;
+  onDeleteTask: (taskId: string) => void;
   editingTask: Task | null;
   currentDay: DayOfWeek;
+  currentDate: Date;
   taskTemplates: TaskTemplate[];
   quickDurations: number[];
   initialTemplate?: TaskTemplate | null;
@@ -52,8 +56,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   isOpen,
   onClose,
   onSaveTask,
+  onDuplicateTask,
+  onDeleteTask,
   editingTask,
   currentDay,
+  currentDate,
   taskTemplates,
   quickDurations,
   initialTemplate,
@@ -79,11 +86,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [color, setColor] = useState('#007AFF');
   const [customHex, setCustomHex] = useState('');
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([currentDay]);
+  const [repeatTask, setRepeatTask] = useState(false);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
   const [notes, setNotes] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [showActionsMenu, setShowActionsMenu] = useState(false);
   const [showIconPicker, setShowIconPicker] = useState(false);
   const [iconCategory, setIconCategory] = useState<string>('All');
   const [iconSearch, setIconSearch] = useState<string>('');
@@ -92,12 +101,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [showHexDeleteMode, setShowHexDeleteMode] = useState(false);
   const [hexToDelete, setHexToDelete] = useState<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iconGridRef = useRef<HTMLDivElement | null>(null);
   const hoursWheelRef = useRef<HTMLDivElement | null>(null);
   const minutesWheelRef = useRef<HTMLDivElement | null>(null);
   const durationTrackRef = useRef<HTMLDivElement | null>(null);
   const durationSlotRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
+    setShowActionsMenu(false);
     if (editingTask) {
       setTitle(editingTask.title);
       setStartTime(editingTask.startTime);
@@ -106,6 +117,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setIcon(editingTask.icon);
       setColor(uniformTaskColorEnabled ? uniformTaskColor : editingTask.color);
       setSelectedDays(editingTask.days);
+      setRepeatTask(!editingTask.scheduledDate);
       setSubtasks(editingTask.subtasks || []);
       setNotes(editingTask.notes || '');
       setIsCompleted(editingTask.completed);
@@ -119,6 +131,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setColor(uniformTaskColorEnabled ? uniformTaskColor : initialTemplate.color || accentColor);
       setCustomHex(initialTemplate.color || accentColor);
       setSelectedDays([currentDay]);
+      setRepeatTask(false);
       setSubtasks([]);
       setNotes('');
       setIsCompleted(false);
@@ -131,6 +144,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setColor(uniformTaskColorEnabled ? uniformTaskColor : accentColor);
       setCustomHex(uniformTaskColorEnabled ? uniformTaskColor : accentColor);
       setSelectedDays([currentDay]);
+      setRepeatTask(false);
       setSubtasks([]);
       setNotes('');
       setIsCompleted(false);
@@ -153,6 +167,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       if (minutesWheelRef.current) minutesWheelRef.current.scrollTop = customMinutes * 40;
     });
   }, [showCustomTimePicker]);
+
+  useEffect(() => {
+    if (iconGridRef.current) iconGridRef.current.scrollTop = 0;
+  }, [iconCategory]);
 
   useLayoutEffect(() => {
     const track = durationTrackRef.current;
@@ -207,6 +225,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     } else {
       setSelectedDays([...selectedDays, day]);
     }
+  };
+
+  const handleIconCategorySelect = (category: string) => {
+    setIconCategory(category);
+    if (iconGridRef.current) iconGridRef.current.scrollTop = 0;
   };
 
   const handleAddSubtask = () => {
@@ -277,7 +300,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         icon,
         color: activeTaskColor,
         completed: isCompleted,
-        days: selectedDays,
+        days: repeatTask ? selectedDays : [currentDay],
+        scheduledDate: repeatTask ? undefined : formatDateKey(currentDate),
         subtasks,
         blockId: editingTask?.blockId || null,
         notes: notes.trim(),
@@ -325,14 +349,53 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => setShowColorPicker(!showColorPicker)}
-            aria-label="Color options"
-            className="w-9 h-9 rounded-full bg-white/80 dark:bg-zinc-800/80 flex items-center justify-center text-slate-700 dark:text-zinc-200 shadow-2xs hover:bg-white transition-all active:scale-95"
-          >
-            <MoreHorizontal className="w-5 h-5" />
-          </button>
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setShowActionsMenu((visible) => !visible)}
+              aria-label="Task options"
+              aria-haspopup="menu"
+              aria-expanded={showActionsMenu}
+              className="w-9 h-9 rounded-full bg-white/80 dark:bg-zinc-800/80 flex items-center justify-center text-slate-700 dark:text-zinc-200 shadow-2xs hover:bg-white transition-all active:scale-95"
+            >
+              <MoreHorizontal className="w-5 h-5" />
+            </button>
+            {showActionsMenu && editingTask && (
+              <div
+                role="menu"
+                className="absolute right-0 top-full z-20 mt-2 min-w-40 rounded-xl bg-white dark:bg-zinc-800 p-1 shadow-xl ring-1 ring-black/10 dark:ring-white/10"
+              >
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onDuplicateTask(editingTask);
+                    onClose();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-slate-700 dark:text-zinc-100 hover:bg-stone-100 dark:hover:bg-zinc-700"
+                >
+                  <Copy className="h-4 w-4" />
+                  Duplicate
+                </button>
+                <div className="my-1 border-t border-slate-200 dark:border-zinc-700" />
+                <button
+                  type="button"
+                  role="menuitem"
+                  onClick={() => {
+                    setShowActionsMenu(false);
+                    onDeleteTask(editingTask.id);
+                    onClose();
+                  }}
+                  className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium hover:bg-red-50 dark:hover:bg-red-950/30"
+                  style={{ color: '#FF3B30' }}
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         <form onSubmit={handleSubmit} className="overflow-y-auto px-5 pb-6 space-y-4 flex-1">
@@ -351,7 +414,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   title="Change icon"
                   className="text-white hover:scale-110 active:scale-95 transition-transform"
                 >
-                  <IconRenderer name={icon} className="w-8 h-8 stroke-[2.2]" />
+                  <IconRenderer name={icon} strokeWidth={2.5} className="w-8 h-8 stroke-[2.5]" />
                 </button>
               </div>
 
@@ -521,11 +584,11 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-[10px]">
-                    {['All', 'Routine', 'Self-Care', 'Human Activity', 'Work', 'Study', 'Study/Creation', 'Fitness', 'Food', 'Social', 'Leisure', 'Travel', 'Home', 'Mindfulness'].map((cat) => (
+                    {ICON_CATEGORIES.map((cat) => (
                       <button
                         key={cat}
                         type="button"
-                        onClick={() => setIconCategory(cat)}
+                        onClick={() => handleIconCategorySelect(cat)}
                         className={`px-2 py-0.5 rounded-full whitespace-nowrap font-medium transition-colors ${
                           iconCategory === cat
                             ? 'bg-[var(--accent-color)] text-white'
@@ -537,12 +600,12 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     ))}
                   </div>
 
-                  <div className="grid grid-cols-7 sm:grid-cols-8 gap-1.5 max-h-36 overflow-y-auto p-1 bg-stone-50/50 dark:bg-zinc-900/50 rounded-xl">
+                  <div ref={iconGridRef} className="grid grid-cols-7 sm:grid-cols-8 gap-1.5 max-h-36 overflow-y-auto p-1 bg-stone-50/50 dark:bg-zinc-900/50 rounded-xl">
                     {AVAILABLE_ICONS.filter((item) => {
                       const matchesCat = iconCategory === 'All' || item.category === iconCategory;
                       const matchesSearch =
                         !iconSearch ||
-                        item.label.toLowerCase().includes(iconSearch.toLowerCase()) ||
+                        item.name.toLowerCase().includes(iconSearch.toLowerCase()) ||
                         item.id.toLowerCase().includes(iconSearch.toLowerCase()) ||
                         item.category.toLowerCase().includes(iconSearch.toLowerCase());
                       return matchesCat && matchesSearch;
@@ -550,18 +613,18 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       <button
                         key={item.id}
                         type="button"
-                        title={item.label}
+                        title={item.name}
                         onClick={() => {
                           setIcon(item.id);
                           setShowIconPicker(false);
                         }}
-                        className={`p-2 rounded-xl flex flex-col items-center justify-center transition-all ${
+                        className={`${isFontAwesomeIcon(item.icon) ? 'p-0' : 'p-2'} rounded-xl flex flex-col items-center justify-center transition-all ${
                           icon === item.id
                             ? 'bg-[var(--accent-color)] text-white scale-105 shadow-sm'
                             : 'text-slate-600 dark:text-zinc-300 hover:bg-slate-200/80 dark:hover:bg-zinc-700'
                         }`}
                       >
-                        <item.icon className="w-4.5 h-4.5" />
+                        <IconRenderer name={item.id} strokeWidth={2.5} className="w-4.5 h-4.5" />
                       </button>
                     ))}
                   </div>
@@ -662,32 +725,53 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             </div>
 
             <div className="py-2.5">
-              <div className="flex items-center gap-2 mb-2 text-slate-600 dark:text-zinc-300">
-                <RotateCw className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                <span className="font-medium">Repeat</span>
+              <div className="flex items-center justify-between text-slate-600 dark:text-zinc-300">
+                <div className="flex items-center gap-2">
+                  <RotateCw className="w-3.5 h-3.5" style={{ color: accentColor }} />
+                  <span className="font-medium">Repeat Task?</span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={repeatTask}
+                  onClick={() => setRepeatTask((previous) => !previous)}
+                  className={`relative h-6 w-11 rounded-full transition-colors ${
+                    repeatTask ? 'bg-[var(--accent-color)]' : 'bg-slate-300 dark:bg-zinc-600'
+                  }`}
+                >
+                  <span
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-transform ${
+                      repeatTask ? 'translate-x-5' : 'translate-x-0.5'
+                    }`}
+                  />
+                </button>
               </div>
-              <div className="grid grid-cols-7 gap-1">
-                {DAYS_OF_WEEK.map(({ key, short }) => {
-                  const isSelected = selectedDays.includes(key);
-                  return (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => handleToggleDay(key)}
-                      className={`py-1 text-center rounded-xl text-[11px] font-medium transition-colors ${
-                        isSelected
-                          ? 'bg-[var(--accent-color)] text-white font-semibold'
-                          : 'bg-stone-100 dark:bg-zinc-700 text-slate-500'
-                      }`}
-                    >
-                      {short}
-                    </button>
-                  );
-                })}
-              </div>
-              <p className="mt-2 text-[10px] text-slate-400 dark:text-zinc-500">
-                A reminder is scheduled for the next upcoming selected day at this start time.
-              </p>
+              {repeatTask && (
+                <div className="mt-3 animate-in fade-in slide-in-from-top-1 duration-150">
+                  <div className="grid grid-cols-7 gap-1">
+                    {DAYS_OF_WEEK.map(({ key, short }) => {
+                      const isSelected = selectedDays.includes(key);
+                      return (
+                        <button
+                          key={key}
+                          type="button"
+                          onClick={() => handleToggleDay(key)}
+                          className={`py-1 text-center rounded-xl text-[11px] font-medium transition-colors ${
+                            isSelected
+                              ? 'bg-[var(--accent-color)] text-white font-semibold'
+                              : 'bg-stone-100 dark:bg-zinc-700 text-slate-500'
+                          }`}
+                        >
+                          {short}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <p className="mt-2 text-[10px] text-slate-400 dark:text-zinc-500">
+                    A reminder is scheduled for the next upcoming selected day at this start time.
+                  </p>
+                </div>
+              )}
             </div>
           </div>
 

@@ -29,7 +29,9 @@ import {
   minutesToTimeString,
   detectAllClashes,
   filterBlocksForDay,
+  formatDateKey,
   formatDuration,
+  calculateEndTime,
 } from './utils/scheduleLogic';
 import {
   loadStoredTasks,
@@ -54,6 +56,7 @@ import {
 } from './utils/cloudSync';
 import { Header } from './components/Header';
 import { TimelineTask } from './components/TimelineTask';
+import { TimelineTrack } from './components/TimelineTrack';
 import { UnallocatedGap } from './components/UnallocatedGap';
 import { RoutineBlockContainer } from './components/RoutineBlockContainer';
 import { TaskModal } from './components/TaskModal';
@@ -250,12 +253,12 @@ export default function App() {
   const uniformColor = settings.uniformTaskColor || accentColor;
 
   const currentDayTasks = useMemo(() => {
-    const list = filterTasksForDay(tasks, selectedDay);
+    const list = filterTasksForDay(tasks, selectedDay, formatDateKey(currentDate));
     if (uniformEnabled) {
       return list.map((t) => ({ ...t, color: uniformColor }));
     }
     return list;
-  }, [tasks, selectedDay, uniformEnabled, uniformColor]);
+  }, [tasks, selectedDay, currentDate, uniformEnabled, uniformColor]);
 
   const clashMap = useMemo(() => {
     return detectAllClashes(currentDayTasks);
@@ -266,8 +269,8 @@ export default function App() {
   }, [blocks, selectedDay]);
 
   const getRoutineBlockBounds = (block: RoutineBlock) => {
-    const blockTasks = sortTasksByTime(tasks.filter(
-      (task) => task.blockId === block.id && task.days.includes(selectedDay)
+    const blockTasks = sortTasksByTime(currentDayTasks.filter(
+      (task) => task.blockId === block.id
     ));
     const startMinutes = parseTimeToMinutes(block.startTime || blockTasks[0]?.startTime || '09:00');
     const inferredDuration = Math.max(
@@ -382,7 +385,7 @@ export default function App() {
     }
     setTasks((prev) =>
       prev.map((t) => {
-        if (t.blockId === blockId && t.days.includes(selectedDay)) {
+        if (t.blockId === blockId && currentDayTasks.some((task) => task.id === t.id)) {
           const currentM = parseTimeToMinutes(t.startTime);
           const newM = Math.max(0, Math.min(1440 - t.durationMinutes, currentM + deltaMinutes));
           const snappedM = Math.round(newM / 10) * 10;
@@ -561,6 +564,7 @@ export default function App() {
       completed: false,
       scheduledNotificationId: undefined,
       days: [selectedDay],
+      scheduledDate: task.scheduledDate ? formatDateKey(currentDate) : undefined,
       subtasks: task.subtasks.map((st) => ({
         ...st,
         id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
@@ -569,6 +573,21 @@ export default function App() {
     };
     setTasks((prev) => [...prev, clonedTask]);
     showToast(`Copied "${task.title}"`);
+  };
+
+  const handleDuplicateTask = (task: Task) => {
+    const { id: _id, completedAt: _completedAt, scheduledNotificationId: _scheduledNotificationId, ...taskData } = task;
+    const duplicateTask: Omit<Task, 'id'> = {
+      ...taskData,
+      startTime: calculateEndTime(task.startTime, task.durationMinutes),
+      completed: false,
+      subtasks: task.subtasks.map((subtask) => ({
+        ...subtask,
+        id: `st-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+        completed: false,
+      })),
+    };
+    handleSaveTask(duplicateTask);
   };
 
   const handleSaveBlock = (blockData: Omit<RoutineBlock, 'id'>, existingId?: string) => {
@@ -699,7 +718,6 @@ export default function App() {
       a.time - b.time || (a.kind === b.kind ? 0 : a.kind === 'block' ? -1 : 1)
     );
     const renderedElements: React.ReactNode[] = [];
-    let lastColor: string | undefined = undefined;
     let lastTaskEndM: number | null = null;
 
     events.forEach((event, index) => {
@@ -740,7 +758,6 @@ export default function App() {
                   isFirst={taskIndex === 0}
                   isLast={taskIndex === blockTasks.length - 1}
                   isOverlappingPrev={isOverlappingPrev}
-                  prevTaskColor={previousTask?.color || block.color}
                   accentColor={accentColor}
                   onToggleComplete={handleToggleComplete}
                   onToggleSubtask={handleToggleSubtask}
@@ -758,7 +775,6 @@ export default function App() {
             })}
           </RoutineBlockContainer>
         );
-        lastColor = blockTasks[blockTasks.length - 1]?.color || block.color;
         lastTaskEndM = blockTasks.length > 0
           ? Math.max(blockEndM, ...blockTasks.map((task) =>
             parseTimeToMinutes(task.startTime) + (task.isReminder ? 0 : task.durationMinutes)
@@ -769,7 +785,6 @@ export default function App() {
 
       const item = event.item;
       if (item.type === 'gap') {
-        const isPastGap = parseTimeToMinutes(item.endTime) <= effectiveCurrentTimeMinutes;
         renderedElements.push(
           <UnallocatedGap
             key={item.id}
@@ -777,8 +792,6 @@ export default function App() {
             endTime={item.endTime}
             durationMinutes={item.durationMinutes}
             realTimeMinutes={realTimeMinutes}
-            prevTaskColor={lastColor}
-            isPast={isPastGap}
             onQuickAdd={handleQuickAddGap}
           />
         );
@@ -787,8 +800,6 @@ export default function App() {
         const task = item.task;
         const hasVisibleBlock = currentDayBlocks.some((block) => block.id === task.blockId);
         if (!hasVisibleBlock) {
-          const prevColor = lastColor;
-          lastColor = task.color;
           const taskStartM = parseTimeToMinutes(task.startTime);
           const isOverlappingPrev = lastTaskEndM !== null && taskStartM < lastTaskEndM;
           lastTaskEndM = taskStartM + (task.isReminder ? 0 : task.durationMinutes);
@@ -802,7 +813,6 @@ export default function App() {
               isFirst={index === 0}
               isLast={index === timelineItems.length - 1}
               isOverlappingPrev={isOverlappingPrev}
-              prevTaskColor={prevColor}
               accentColor={accentColor}
               onToggleComplete={handleToggleComplete}
               onToggleSubtask={handleToggleSubtask}
@@ -821,7 +831,7 @@ export default function App() {
       }
     });
 
-    return renderedElements;
+    return <TimelineTrack>{renderedElements}</TimelineTrack>;
   };
 
   return (
@@ -953,8 +963,11 @@ export default function App() {
         isOpen={isTaskModalOpen}
         onClose={() => setIsTaskModalOpen(false)}
         onSaveTask={handleSaveTask}
+        onDuplicateTask={handleDuplicateTask}
+        onDeleteTask={handleDeleteTask}
         editingTask={editingTask}
         currentDay={selectedDay}
+        currentDate={currentDate}
         taskTemplates={settings.taskTemplates || []}
         quickDurations={settings.quickDurations}
         initialTemplate={modalInitialTemplate}

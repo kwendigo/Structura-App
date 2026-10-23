@@ -276,7 +276,7 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
       )}
 
       {!areTasksFolded && (
-        <div className="space-y-0.5 animate-in fade-in duration-150">
+        <div className="-mx-2.5 space-y-0.5 animate-in fade-in duration-150">
           {tasks.length > 0 ? children : (
             <div className="flex h-full min-h-12 items-center justify-center rounded-2xl border border-dashed px-3 text-center text-xs text-slate-400 dark:text-zinc-500"
               style={{ borderColor: `${hex}55` }}>

@@ -32,6 +32,7 @@ export interface Task {
   color: string; // Hex code e.g. "#007AFF"
   completed: boolean;
   days: DayOfWeek[]; // Repeating days (or single day)
+  scheduledDate?: string; // Local YYYY-MM-DD date for one-off tasks
   subtasks: Subtask[];
   blockId?: string | null; // Optional reference to RoutineBlock
   notes?: string;

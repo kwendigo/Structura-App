@@ -199,7 +199,11 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
               }}
             />
             <div className="relative z-10 w-16 h-16 rounded-full flex items-center justify-center text-white drop-shadow-md">
-              <IconRenderer name={task.icon} className="w-10 h-10 stroke-[2.2]" />
+              <IconRenderer
+                name={task.icon}
+                strokeWidth={2.5}
+                className={`w-10 h-10 stroke-[2.2] transition-opacity ${task.completed ? 'opacity-60' : 'opacity-100'}`}
+              />
             </div>
           </div>
 

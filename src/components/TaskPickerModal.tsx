@@ -146,7 +146,7 @@ export const TaskPickerModal: React.FC<TaskPickerModalProps> = ({
                     className="w-10 h-10 rounded-full flex items-center justify-center text-white flex-shrink-0 group-hover:scale-105 transition-transform shadow-xs"
                     style={{ backgroundColor: item.color }}
                   >
-                    <IconRenderer name={item.icon} className="w-5 h-5 stroke-[2]" />
+                    <IconRenderer name={item.icon} strokeWidth={2.5} className="w-5 h-5 stroke-[2.5]" />
                   </div>
 
                   <div className="flex-1 min-w-0">

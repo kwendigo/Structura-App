@@ -85,12 +85,18 @@ export async function getOneSignalSubscriptionId(): Promise<string> {
   return subscription.id;
 }
 
-export function getNextScheduledAt(task: Pick<Task, 'days' | 'startTime'>): string {
+export function getNextScheduledAt(task: Pick<Task, 'days' | 'startTime' | 'scheduledDate'>): string {
+  const [hours, minutes] = task.startTime.split(':').map(Number);
+  if (task.scheduledDate) {
+    const candidate = new Date(`${task.scheduledDate}T${task.startTime}:00`);
+    if (Number.isNaN(candidate.getTime())) throw new Error('The one-off task date or time is invalid.');
+    if (candidate.getTime() <= Date.now()) throw new Error('The one-off task time has already passed.');
+    return candidate.toISOString();
+  }
   if (task.days.length === 0) throw new Error('Select at least one day for this task.');
 
   const now = new Date();
   const weekdays: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-  const [hours, minutes] = task.startTime.split(':').map(Number);
 
   for (let offset = 0; offset <= 7; offset += 1) {
     const candidate = new Date(now);

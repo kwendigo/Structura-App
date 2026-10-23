@@ -33,7 +33,6 @@ interface TimelineTaskProps {
   isFirst: boolean;
   isLast: boolean;
   isOverlappingPrev?: boolean;
-  prevTaskColor?: string;
   accentColor?: string;
   onToggleComplete: (taskId: string) => void;
   onToggleSubtask: (taskId: string, subtaskId: string) => void;
@@ -52,7 +51,6 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
   isFirst,
   isLast,
   isOverlappingPrev = false,
-  prevTaskColor,
   accentColor = '#007AFF',
   onToggleComplete,
   onToggleSubtask,
@@ -269,29 +267,16 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         }`}
         style={{ minHeight: `${Math.max(52, nodeHeight)}px` }}
       >
-        {!isFirst && !isOverlappingPrev && (
-          <div
-            className="w-[2.5px] h-3 -mt-1 flex-shrink-0 transition-colors"
-            style={{
-              background:
-                prevTaskColor && prevTaskColor !== task.color && (isPast || isActive)
-                  ? `linear-gradient(180deg, ${prevTaskColor} 0%, ${task.color} 100%)`
-                  : isPast || isActive
-                  ? prevTaskColor || task.color
-                  : '#e2e8f0',
-              opacity: isPast ? 0.95 : 0.75,
-            }}
-          />
-        )}
-
         <div
+          data-timeline-bubble
+          data-task-color={task.color}
           data-block-drag-handle
           draggable
           onDragStart={(event) => {
             event.dataTransfer.setData('text/plain', task.id);
             event.dataTransfer.effectAllowed = 'move';
           }}
-          className={`relative w-14 min-h-14 rounded-full flex items-center justify-center overflow-hidden transition-all shadow-xs flex-shrink-0 p-3 ${
+          className={`relative w-14 min-h-14 rounded-full flex items-center justify-center overflow-visible transition-all shadow-xs flex-shrink-0 p-3 ${
             isActive ? 'bg-slate-100 dark:bg-zinc-800' : ''
           } ${
             isOverlappingPrev
@@ -324,21 +309,16 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
             {isReminder ? (
               <Bell className="w-5 h-5 stroke-[2.2]" />
             ) : (
-              <IconRenderer name={task.icon} className="w-6 h-6 stroke-[2.2] drop-shadow-2xs" />
+              <IconRenderer
+                name={task.icon}
+                strokeWidth={2.5}
+                className={`w-6 h-6 stroke-[2.5] drop-shadow-2xs transition-opacity ${task.completed ? 'opacity-60' : 'opacity-100'}`}
+              />
             )}
           </div>
 
         </div>
 
-        {!isLast && (
-          <div
-            className="w-[2.5px] flex-1 min-h-[16px] transition-colors"
-            style={{
-              backgroundColor: isPast ? task.color : '#e2e8f0',
-              opacity: isPast ? 0.95 : 0.7,
-            }}
-          />
-        )}
       </div>
 
       <div className="flex-1 ml-3 pr-0.5 min-w-0 self-center">

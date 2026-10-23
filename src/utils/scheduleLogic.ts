@@ -45,6 +45,13 @@ export function formatDayMonthYear(d: Date): string {
   return `${day} ${month} ${year}`;
 }
 
+export function formatDateKey(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
 export function filterBlocksForDay(blocks: RoutineBlock[], day: DayOfWeek): RoutineBlock[] {
   return blocks.filter((b) => (b.days && b.days.length > 0 ? b.days.includes(day) : b.day === day));
 }
@@ -97,8 +104,12 @@ export function sortTasksByTime(tasks: Task[]): Task[] {
   });
 }
 
-export function filterTasksForDay(tasks: Task[], day: DayOfWeek): Task[] {
-  return tasks.filter((t) => t.days.includes(day));
+export function filterTasksForDay(tasks: Task[], day: DayOfWeek, date: string): Task[] {
+  return tasks.filter((task) => (
+    task.scheduledDate
+      ? task.scheduledDate === date
+      : task.days.includes(day)
+  ));
 }
 
 /**
