@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   X,
   Trash2,
@@ -49,12 +49,37 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [taskCategory, setTaskCategory] = useState<string>('All');
   const [copiedStatus, setCopiedStatus] = useState<string | null>(null);
   const [newPresetVal, setNewPresetVal] = useState<string>('');
+  const [secretSaved, setSecretSaved] = useState(false);
+  const secretSavedTimeoutRef = useRef<number | null>(null);
+  const secretSavedClearTimeoutRef = useRef<number | null>(null);
 
   const currentAccent = settings.accentColor || '#007AFF';
   const uniformEnabled = settings.uniformTaskColorEnabled || false;
   const uniformColor = settings.uniformTaskColor || currentAccent;
   const [customHex, setCustomHex] = useState(currentAccent);
   const [customUniformHex, setCustomUniformHex] = useState(uniformColor);
+
+  useEffect(() => {
+    setActiveSection('main');
+    setSecretSaved(false);
+    if (secretSavedTimeoutRef.current !== null) {
+      window.clearTimeout(secretSavedTimeoutRef.current);
+      secretSavedTimeoutRef.current = null;
+    }
+    if (secretSavedClearTimeoutRef.current !== null) {
+      window.clearTimeout(secretSavedClearTimeoutRef.current);
+      secretSavedClearTimeoutRef.current = null;
+    }
+  }, [isOpen]);
+
+  useEffect(() => () => {
+    if (secretSavedTimeoutRef.current !== null) {
+      window.clearTimeout(secretSavedTimeoutRef.current);
+    }
+    if (secretSavedClearTimeoutRef.current !== null) {
+      window.clearTimeout(secretSavedClearTimeoutRef.current);
+    }
+  }, []);
 
   if (!isOpen) return null;
 
@@ -165,7 +190,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
           </div>
 
           <button
-            onClick={onClose}
+            onClick={() => {
+              setActiveSection('main');
+              onClose();
+            }}
             aria-label="Close settings"
             className="w-8 h-8 rounded-full bg-slate-200/80 dark:bg-zinc-700/80 hover:bg-slate-300 flex items-center justify-center text-slate-700 dark:text-zinc-200 transition-colors"
           >
@@ -626,18 +654,40 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   <label htmlFor="notification-api-secret" className="text-xs font-semibold text-slate-800 dark:text-zinc-100">
                     Vercel scheduler secret
                   </label>
-                  <input
-                    id="notification-api-secret"
-                    type="password"
-                    autoComplete="new-password"
-                    value={settings.notificationApiSecret || ''}
-                    onChange={(event) => onUpdateSettings({
-                      ...settings,
-                      notificationApiSecret: event.target.value,
-                    })}
-                    placeholder="Enter the secret configured in Vercel"
-                    className="w-full rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-700 dark:text-white"
-                  />
+                  <div className="flex items-center gap-2">
+                    <input
+                      id="notification-api-secret"
+                      type="password"
+                      autoComplete="new-password"
+                      value={settings.notificationApiSecret || ''}
+                      onChange={(event) => {
+                        onUpdateSettings({
+                          ...settings,
+                          notificationApiSecret: event.target.value,
+                        });
+                        setSecretSaved(false);
+                        if (secretSavedTimeoutRef.current !== null) {
+                          window.clearTimeout(secretSavedTimeoutRef.current);
+                        }
+                        if (secretSavedClearTimeoutRef.current !== null) {
+                          window.clearTimeout(secretSavedClearTimeoutRef.current);
+                        }
+                        secretSavedTimeoutRef.current = window.setTimeout(() => {
+                          setSecretSaved(true);
+                          secretSavedClearTimeoutRef.current = window.setTimeout(() => {
+                            setSecretSaved(false);
+                          }, 1800);
+                        }, 350);
+                      }}
+                      placeholder="Enter the secret configured in Vercel"
+                      className="min-w-0 flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-700 dark:text-white"
+                    />
+                    {secretSaved && (
+                      <span role="status" className="shrink-0 text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                        ✓ Saved
+                      </span>
+                    )}
+                  </div>
                   <p className="text-[10px] text-slate-500 dark:text-zinc-400">
                     Match the scheduler secret configured in Vercel. Stored in this browser’s local storage.
                   </p>

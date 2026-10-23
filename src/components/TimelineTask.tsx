@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
   ChevronDown,
   ChevronRight,
@@ -68,6 +68,8 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
 }) => {
   const [subtasksOpen, setSubtasksOpen] = useState(true);
   const [showMenu, setShowMenu] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   const [isLifted, setIsLifted] = useState(false);
   const [dragOffsetY, setDragOffsetY] = useState(0);
@@ -81,6 +83,24 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
   const liveSnappedStartMRef = useRef<number | null>(null);
 
   const isReminder = task.isReminder || task.durationMinutes === 0;
+
+  useEffect(() => {
+    if (!showMenu) return;
+
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      const target = event.target;
+      if (
+        target instanceof Node &&
+        !menuRef.current?.contains(target) &&
+        !menuButtonRef.current?.contains(target)
+      ) {
+        setShowMenu(false);
+      }
+    };
+
+    document.addEventListener('pointerdown', handleOutsidePointerDown);
+    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown);
+  }, [showMenu]);
 
   const endTime = isReminder ? task.startTime : calculateEndTime(task.startTime, task.durationMinutes);
   const nodeHeight = isReminder ? 56 : getProportionalNodeHeight(task.durationMinutes);
@@ -168,6 +188,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
       ref={cardRef}
       style={{
         transform: isLifted ? `translateY(${dragOffsetY}px)` : undefined,
+        touchAction: isLifted ? 'none' : undefined,
       }}
       className={`relative flex items-start pl-1.5 pr-2 py-1 select-none group transition-all rounded-2xl ${
         isLifted
@@ -195,7 +216,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
       >
         <div className="flex flex-col items-end">
           <span
-            className={`text-xs font-semibold tabular-nums tracking-tight transition-colors ${
+            className={`timeline-timestamp text-xs font-semibold tabular-nums tracking-tight transition-colors ${
               isLifted
                 ? 'font-black scale-105'
                 : isActive
@@ -213,7 +234,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         </div>
 
         {!isReminder && (
-          <span className="text-[11px] tabular-nums font-normal text-slate-400 dark:text-zinc-500">
+          <span className="timeline-timestamp-end text-[11px] tabular-nums font-normal text-slate-400 dark:text-zinc-500">
             {displayedEndTime}
           </span>
         )}
@@ -305,7 +326,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
               {formatRemainingClock(progress.remainingMinutes)}
             </span>
           ) : isReminder ? (
-            <span className="font-semibold text-amber-600 dark:text-amber-400">Reminder at {displayedStartTime}</span>
+            <span className="font-semibold" style={{ color: task.color }}>Reminder at {displayedStartTime}</span>
           ) : (
             <>
               <span>
@@ -320,7 +341,8 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
           {isRepeating && (
             <span
               title={`Repeats on ${task.days.join(', ').toUpperCase()}`}
-              className="flex items-center gap-0.5 text-[10px] text-slate-400 dark:text-zinc-500"
+              className="flex items-center gap-0.5 text-[10px]"
+              style={{ color: task.color }}
             >
               <RotateCw className="w-2.5 h-2.5" />
             </span>
@@ -451,6 +473,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
 
         <div className="relative">
           <button
+            ref={menuButtonRef}
             type="button"
             onClick={(e) => {
               e.stopPropagation();
@@ -464,6 +487,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
 
           {showMenu && (
             <div
+              ref={menuRef}
               className="absolute right-0 top-6 z-30 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/10 p-1.5 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
               onClick={(e) => e.stopPropagation()}
             >

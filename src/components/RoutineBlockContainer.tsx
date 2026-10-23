@@ -136,6 +136,7 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
       style={{
         transform: isLifted ? `translateY(${dragOffsetY}px)` : undefined,
         backgroundColor: `${hex}0c`,
+        touchAction: isLifted ? 'none' : undefined,
       }}
       className={`relative my-3 rounded-3xl p-2.5 transition-all select-none group/block ring-1 ring-black/5 dark:ring-white/5 ${
         isLifted

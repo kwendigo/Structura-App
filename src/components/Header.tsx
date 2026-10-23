@@ -107,14 +107,14 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-20 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md pt-3 pb-2 px-4 border-b border-slate-100 dark:border-zinc-800/60 select-none">
+    <header className="sticky top-0 z-[100] bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md pt-3 pb-2 px-3 border-b border-slate-100 dark:border-zinc-800/60 select-none">
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
             onClick={onOpenCalendar}
             aria-label="Open full month calendar"
-            className="flex items-center gap-1.5 text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 group transition-colors"
+            className="header-date-title flex items-center gap-1.5 text-2xl md:text-3xl font-bold tracking-tight text-slate-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 group transition-colors"
           >
             <span>
               {dayAndMonth}{' '}
@@ -188,7 +188,8 @@ export const Header: React.FC<HeaderProps> = ({
           const isCurrentDay = isToday(date);
 
           return (
-            <div key={key} className="relative flex flex-col items-center">
+            <React.Fragment key={key}>
+            <div className="relative flex flex-col items-center">
               <button
                 type="button"
                 onClick={() => {
@@ -276,6 +277,7 @@ export const Header: React.FC<HeaderProps> = ({
                 </div>
               )}
             </div>
+            </React.Fragment>
           );
         })}
       </div>

@@ -538,9 +538,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   }}
                   className={`py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center gap-1 ${
                     isReminder
-                      ? 'bg-amber-500 text-white shadow-xs'
-                      : 'bg-stone-100 dark:bg-zinc-700 text-amber-600 dark:text-amber-400 hover:bg-stone-200'
+                      ? 'text-white shadow-xs'
+                      : 'bg-stone-100 dark:bg-zinc-700 hover:bg-stone-200'
                   }`}
+                  style={isReminder ? { backgroundColor: activeTaskColor } : { color: activeTaskColor }}
                 >
                   <span>Reminder</span>
                 </button>
@@ -550,7 +551,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             <div className="py-2.5">
               <div className="flex items-center justify-between mb-1.5 text-slate-600 dark:text-zinc-300">
                 <div className="flex items-center gap-1.5">
-                  <Folder className="w-3.5 h-3.5 text-amber-500" />
+                  <Folder className="w-3.5 h-3.5" style={{ color: accentColor }} />
                   <span className="font-medium">Routine Block</span>
                 </div>
               </div>
@@ -588,7 +589,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
             <div className="py-2.5">
               <div className="flex items-center gap-2 mb-2 text-slate-600 dark:text-zinc-300">
-                <RotateCw className="w-3.5 h-3.5 text-emerald-500" />
+                <RotateCw className="w-3.5 h-3.5" style={{ color: accentColor }} />
                 <span className="font-medium">Repeat</span>
               </div>
               <div className="grid grid-cols-7 gap-1">

@@ -609,14 +609,14 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-black text-slate-900 dark:text-zinc-100 flex flex-col items-center justify-start sm:py-6 selection:bg-blue-500 selection:text-white">
+    <div className="h-dvh overscroll-none bg-slate-50 dark:bg-black text-slate-900 dark:text-zinc-100 flex flex-col items-center justify-start sm:py-6 selection:bg-blue-500 selection:text-white">
       <div
         onDragOver={(e) => {
           e.preventDefault();
           e.dataTransfer.dropEffect = 'move';
         }}
         onDrop={handleDropOutsideBlocks}
-        className="w-full max-w-lg min-h-screen sm:min-h-[880px] bg-white dark:bg-zinc-950 sm:rounded-[36px] shadow-2xl relative flex flex-col overflow-hidden sm:ring-1 sm:ring-black/10 dark:sm:ring-white/10"
+        className="w-full max-w-lg h-full overscroll-none bg-white dark:bg-zinc-950 sm:rounded-[36px] shadow-2xl relative flex flex-col overflow-hidden sm:ring-1 sm:ring-black/10 dark:sm:ring-white/10"
       >
         <div className="hidden sm:flex justify-center pt-3 pb-1 select-none">
           <div className="w-28 h-4 bg-black dark:bg-zinc-800 rounded-full flex items-center justify-center">
@@ -648,52 +648,52 @@ export default function App() {
           }
         />
 
-        <main className="flex-1 overflow-y-auto px-2 py-3 pb-20 overscroll-contain">
+        <main className="min-h-0 flex-1 overflow-y-auto px-1 py-3 pb-32 overscroll-none">
           {renderTimeline()}
 
           <div className="mt-6 mb-8 px-4 flex flex-col items-center select-none">
             {/* Straight solid line separator */}
             <div className="w-full h-[1px] bg-slate-200 dark:bg-zinc-800 my-4" />
-            <div className="text-center mb-4">
-              <span className="text-[11px] font-bold text-slate-500 dark:text-zinc-400 tracking-wider uppercase block">
-                Structura App
-              </span>
-              <span className="text-[9px] text-slate-400 dark:text-zinc-500 font-mono">
-                by kwendig0
-              </span>
-            </div>
-
-            <div className="flex items-center gap-3 mt-1">
-              {/* Requirement 3: Add Block button corresponds to app theme accent color */}
-              <button
-                onClick={() => setIsBlockPickerOpen(true)}
-                aria-label="Add routine block"
-                style={{ backgroundColor: accentColor }}
-                className="w-13 h-13 rounded-full text-white shadow-lg shadow-black/20 flex items-center justify-center active:scale-90 transition-all cursor-pointer hover:brightness-110"
-                title="Add Routine Block"
-              >
-                <Folder className="w-5 h-5 stroke-[2.5]" />
-              </button>
-
-              <button
-                onClick={() => {
-                  setEditingTask(null);
-                  setModalInitialTemplate(null);
-                  setModalInitialTime('09:00');
-                  setModalInitialDuration(30);
-                  setModalInitialBlockId(null);
-                  setIsTaskPickerOpen(true);
-                }}
-                aria-label="Add task"
-                style={{ backgroundColor: accentColor }}
-                className="w-13 h-13 rounded-full text-white shadow-xl shadow-black/10 flex items-center justify-center active:scale-90 transition-all cursor-pointer hover:brightness-110"
-                title="Add Task"
-              >
-                <Plus className="w-6 h-6 stroke-[2.5]" />
-              </button>
-            </div>
           </div>
         </main>
+
+        <div
+          className="fixed bottom-0 left-1/2 z-30 flex w-full max-w-lg -translate-x-1/2 flex-col items-center gap-1 bg-gradient-to-t from-white via-white/95 to-transparent pt-3 dark:from-zinc-950 dark:via-zinc-950/95 pointer-events-none"
+          style={{ paddingBottom: 'max(env(safe-area-inset-bottom), 8px)' }}
+        >
+          <div className="flex items-center gap-3 pointer-events-auto">
+            <button
+              onClick={() => setIsBlockPickerOpen(true)}
+              aria-label="Add routine block"
+              style={{ backgroundColor: accentColor }}
+              className="h-13 w-13 rounded-full text-white shadow-lg shadow-black/20 flex items-center justify-center active:scale-90 transition-all cursor-pointer hover:brightness-110"
+              title="Add Routine Block"
+            >
+              <Folder className="w-5 h-5 stroke-[2.5]" />
+            </button>
+
+            <button
+              onClick={() => {
+                setEditingTask(null);
+                setModalInitialTemplate(null);
+                setModalInitialTime('09:00');
+                setModalInitialDuration(30);
+                setModalInitialBlockId(null);
+                setIsTaskPickerOpen(true);
+              }}
+              aria-label="Add task"
+              style={{ backgroundColor: accentColor }}
+              className="h-13 w-13 rounded-full text-white shadow-xl shadow-black/10 flex items-center justify-center active:scale-90 transition-all cursor-pointer hover:brightness-110"
+              title="Add Task"
+            >
+              <Plus className="w-6 h-6 stroke-[2.5]" />
+            </button>
+          </div>
+          <div className="text-center select-none">
+            <span className="app-signature-title text-[11px] font-bold text-slate-500 dark:text-zinc-400 tracking-wider lowercase">structura app</span>
+            <span className="app-signature-author mx-1 text-[9px] text-slate-400 dark:text-zinc-500 font-mono">by kwendig0</span>
+          </div>
+        </div>
 
         {toastMessage && (
           <div className="fixed sm:absolute bottom-20 left-1/2 -translate-x-1/2 z-40 bg-zinc-900/95 text-white text-xs font-medium px-4 py-2 rounded-2xl shadow-xl flex items-center gap-2 animate-in fade-in slide-in-from-bottom-2 duration-150">
@@ -762,6 +762,7 @@ export default function App() {
         isOpen={isBlockPickerOpen}
         onClose={() => setIsBlockPickerOpen(false)}
         blocks={currentDayBlocks}
+        accentColor={accentColor}
         tasks={currentDayTasks}
         currentDay={selectedDay}
         onSelectExistingBlock={(blk) => {

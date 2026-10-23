@@ -13,6 +13,7 @@ interface BlockPickerModalProps {
   blocks: RoutineBlock[];
   tasks: Task[];
   currentDay: DayOfWeek;
+  accentColor?: string;
   onSelectExistingBlock: (block: RoutineBlock) => void;
   onCreateNewBlock: () => void;
 }
@@ -21,6 +22,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
   isOpen,
   onClose,
   blocks,
+  accentColor = '#007AFF',
   onSelectExistingBlock,
   onCreateNewBlock,
 }) => {
@@ -34,7 +36,7 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
       >
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded-full bg-amber-500/20 text-amber-500 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center" style={{ backgroundColor: `${accentColor}20`, color: accentColor }}>
               <Folder className="w-4 h-4" />
             </div>
             <h3 className="text-base font-bold text-slate-900 dark:text-white">
@@ -58,7 +60,8 @@ export const BlockPickerModal: React.FC<BlockPickerModalProps> = ({
               onClose();
               onCreateNewBlock();
             }}
-            className="w-full py-3 px-4 bg-amber-500 hover:bg-amber-600 text-white rounded-2xl text-xs font-bold flex items-center justify-between shadow-md active:scale-98 transition-all"
+            style={{ backgroundColor: accentColor }}
+            className="w-full py-3 px-4 text-white rounded-2xl text-xs font-bold flex items-center justify-between shadow-md active:scale-98 transition-all hover:brightness-110"
           >
             <span className="flex items-center gap-2">
               <Plus className="w-4 h-4 stroke-[3]" />
