@@ -67,6 +67,8 @@ import { BlockPickerModal } from './components/BlockPickerModal';
 import { CalendarModal } from './components/CalendarModal';
 import { FocusModeModal } from './components/FocusModeModal';
 
+const CLOUD_SYNC_DEBOUNCE_MS = 400;
+
 export default function App() {
   const [currentDate, setCurrentDate] = useState<Date>(() => new Date());
 
@@ -200,30 +202,34 @@ export default function App() {
       !isValidCloudSyncKey(recoveryKey)
     ) return;
 
-    cloudSyncWriteQueueRef.current = cloudSyncWriteQueueRef.current
-      .catch(() => undefined)
-      .then(async () => {
-        if (
-          settingsRef.current.iCloudSyncEnabled === false ||
-          settingsRef.current.cloudSyncKey?.trim() !== recoveryKey
-        ) return;
-        setCloudSyncStatus('syncing');
-        setCloudSyncError(null);
-        try {
-          const updatedAt = await uploadCloudTaskBackup(recoveryKey, tasks);
-          if (version !== cloudSyncWriteVersionRef.current) return;
-          setSettings((previous) => ({
-            ...previous,
-            cloudSyncLastBackupAt: updatedAt,
-          }));
-          setCloudSyncStatus('active');
-        } catch (error) {
-          if (version !== cloudSyncWriteVersionRef.current) return;
-          console.error('Could not back up tasks to cloud sync', error);
-          setCloudSyncStatus('error');
-          setCloudSyncError(error instanceof Error ? error.message : 'Cloud backup failed.');
-        }
-      });
+    const timeout = window.setTimeout(() => {
+      cloudSyncWriteQueueRef.current = cloudSyncWriteQueueRef.current
+        .catch(() => undefined)
+        .then(async () => {
+          if (
+            settingsRef.current.iCloudSyncEnabled === false ||
+            settingsRef.current.cloudSyncKey?.trim() !== recoveryKey
+          ) return;
+          setCloudSyncStatus('syncing');
+          setCloudSyncError(null);
+          try {
+            const updatedAt = await uploadCloudTaskBackup(recoveryKey, tasks);
+            if (version !== cloudSyncWriteVersionRef.current) return;
+            setSettings((previous) => ({
+              ...previous,
+              cloudSyncLastBackupAt: updatedAt,
+            }));
+            setCloudSyncStatus('active');
+          } catch (error) {
+            if (version !== cloudSyncWriteVersionRef.current) return;
+            console.error('Could not back up tasks to cloud sync', error);
+            setCloudSyncStatus('error');
+            setCloudSyncError(error instanceof Error ? error.message : 'Cloud backup failed.');
+          }
+        });
+    }, CLOUD_SYNC_DEBOUNCE_MS);
+
+    return () => window.clearTimeout(timeout);
   }, [tasks, settings.cloudSyncKey, settings.iCloudSyncEnabled, cloudSyncReadyKey]);
 
   useEffect(() => {

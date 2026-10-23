@@ -11,7 +11,6 @@ import {
   RotateCw,
   Target,
   Clock,
-  Bell,
 } from 'lucide-react';
 import { Task } from '../types';
 import { IconRenderer } from './IconRenderer';
@@ -61,7 +60,6 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
   const [subtasksOpen, setSubtasksOpen] = useState(true);
 
   const [isLifted, setIsLifted] = useState(false);
-  const [dragOffsetY, setDragOffsetY] = useState(0);
   const [liveSnappedStartM, setLiveSnappedStartM] = useState<number | null>(null);
 
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -71,6 +69,8 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
   const cardRef = useRef<HTMLDivElement>(null);
   const startClientYRef = useRef<number | null>(null);
   const liveSnappedStartMRef = useRef<number | null>(null);
+  const pendingDragOffsetYRef = useRef(0);
+  const dragFrameRef = useRef<number | null>(null);
 
   const isReminder = task.isReminder || task.durationMinutes === 0;
 
@@ -150,21 +150,38 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
     startClientYRef,
     onMove: (deltaY) => {
       if (!touchStartPos.current) return;
-      setDragOffsetY(deltaY);
+      pendingDragOffsetYRef.current = deltaY;
+      if (dragFrameRef.current === null) {
+        dragFrameRef.current = window.requestAnimationFrame(() => {
+          dragFrameRef.current = null;
+          if (cardRef.current) {
+            cardRef.current.style.transform = `translateY(${pendingDragOffsetYRef.current}px)`;
+          }
+        });
+      }
       const deltaMinutes = Math.round(deltaY / 1.6);
       const rawMinutes = Math.max(0, Math.min(1440 - (isReminder ? 0 : task.durationMinutes), touchStartPos.current.startM + deltaMinutes));
       const snappedMinutes = Math.round(rawMinutes / 10) * 10;
-      liveSnappedStartMRef.current = snappedMinutes;
-      setLiveSnappedStartM(snappedMinutes);
+      if (liveSnappedStartMRef.current !== snappedMinutes) {
+        liveSnappedStartMRef.current = snappedMinutes;
+        setLiveSnappedStartM(snappedMinutes);
+      }
     },
     onEnd: () => {
+      if (dragFrameRef.current !== null) {
+        window.cancelAnimationFrame(dragFrameRef.current);
+        dragFrameRef.current = null;
+      }
+      if (cardRef.current) {
+        cardRef.current.style.transform = '';
+      }
       if (liveSnappedStartMRef.current !== null && onUpdateTaskTime) {
         onUpdateTaskTime(task.id, minutesToTimeString(liveSnappedStartMRef.current, true));
       }
       setIsLifted(false);
-      setDragOffsetY(0);
       setLiveSnappedStartM(null);
       liveSnappedStartMRef.current = null;
+      pendingDragOffsetYRef.current = 0;
       isDraggingRef.current = false;
       touchStartPos.current = null;
       window.setTimeout(() => {
@@ -181,8 +198,8 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
     <div
       ref={cardRef}
       style={{
-        transform: isLifted ? `translateY(${dragOffsetY}px)` : undefined,
         touchAction: isLifted ? 'none' : undefined,
+        transition: isLifted ? 'none' : undefined,
       }}
       onClick={(event) => {
         if (didDragRef.current) {
@@ -306,15 +323,11 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
               color: isPast || (isActive && progress.progressPercent > 45) ? '#ffffff' : task.color,
             }}
           >
-            {isReminder ? (
-              <Bell className="w-5 h-5 stroke-[2.2]" />
-            ) : (
-              <IconRenderer
-                name={task.icon}
-                strokeWidth={2.5}
-                className={`w-6 h-6 stroke-[2.5] drop-shadow-2xs transition-opacity ${task.completed ? 'opacity-60' : 'opacity-100'}`}
-              />
-            )}
+            <IconRenderer
+              name={task.icon}
+              strokeWidth={2.5}
+              className={`w-6 h-6 stroke-[2.5] drop-shadow-2xs transition-opacity ${task.completed ? 'opacity-60' : 'opacity-100'}`}
+            />
           </div>
 
         </div>
