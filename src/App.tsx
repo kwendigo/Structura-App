@@ -76,6 +76,8 @@ export default function App() {
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('wed');
   const [weekSwipeOffset, setWeekSwipeOffset] = useState(0);
   const [weekSwipeAnimating, setWeekSwipeAnimating] = useState(false);
+  const [weekPageTransition, setWeekPageTransition] = useState({ key: 0, direction: -1 as -1 | 1 });
+  const [dateTransitionParts, setDateTransitionParts] = useState({ day: false, month: false, year: false });
   const weekSwipeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [nowMinutes, setNowMinutes] = useState<number>(() => {
     const d = new Date();
@@ -328,17 +330,24 @@ export default function App() {
   const handleWeekSwipe = (direction: -1 | 1, width: number) => {
     if (weekSwipeTimeout.current) clearTimeout(weekSwipeTimeout.current);
     setWeekSwipeAnimating(true);
-    setWeekSwipeOffset(direction * width);
+    setWeekSwipeOffset(direction * (width + 32));
     weekSwipeTimeout.current = setTimeout(() => {
-      setCurrentDate((previous) => {
-        const nextDate = new Date(previous);
-        nextDate.setDate(previous.getDate() + (direction === -1 ? 7 : -7));
-        return nextDate;
+      const nextDate = new Date(currentDate);
+      nextDate.setDate(currentDate.getDate() + (direction === -1 ? 7 : -7));
+      setDateTransitionParts({
+        day: currentDate.getDate() !== nextDate.getDate(),
+        month: currentDate.getMonth() !== nextDate.getMonth(),
+        year: currentDate.getFullYear() !== nextDate.getFullYear(),
       });
+      setCurrentDate(nextDate);
+      setWeekPageTransition((previous) => ({
+        key: previous.key + 1,
+        direction,
+      }));
       setWeekSwipeOffset(0);
       setWeekSwipeAnimating(false);
       weekSwipeTimeout.current = null;
-    }, 200);
+    }, 240);
   };
 
   const handleToggleComplete = (taskId: string) => {
@@ -759,6 +768,8 @@ export default function App() {
           currentDate={currentDate}
           weekSwipeOffset={weekSwipeOffset}
           weekSwipeAnimating={weekSwipeAnimating}
+          dateTransitionKey={weekPageTransition.key}
+          dateTransitionParts={dateTransitionParts}
           onSelectDay={(day) => setSelectedDay(day)}
           onWeekSwipeOffset={setWeekSwipeOffset}
           onWeekSwipe={handleWeekSwipe}
@@ -782,17 +793,21 @@ export default function App() {
           }
         />
 
-        <main
-          className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 py-3 pb-32 overscroll-none ${
-            weekSwipeAnimating ? 'transition-transform duration-200 ease-out' : ''
-          }`}
-          style={{ transform: `translateX(${weekSwipeOffset}px)` }}
-        >
-          {renderTimeline()}
+        <main className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 py-3 pb-32 overscroll-none">
+          <div
+            key={weekPageTransition.key}
+            className={weekPageTransition.key > 0 ? 'timeline-page-enter' : ''}
+            style={
+              weekPageTransition.key > 0
+                ? { '--timeline-enter-offset': weekPageTransition.direction === -1 ? '100%' : '-100%' } as React.CSSProperties
+                : undefined
+            }
+          >
+            {renderTimeline()}
 
-          <div className="mt-6 mb-8 px-4 flex flex-col items-center select-none">
-            {/* Straight solid line separator */}
-            <div className="w-full h-[1px] bg-slate-200 dark:bg-zinc-800 my-4" />
+            <div className="mt-6 mb-8 px-4 flex flex-col items-center select-none">
+              <div className="w-full h-[1px] bg-slate-200 dark:bg-zinc-800 my-4" />
+            </div>
           </div>
         </main>
 

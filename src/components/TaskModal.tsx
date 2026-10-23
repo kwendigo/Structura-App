@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   X,
   Plus,
@@ -95,7 +96,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
 
   // Long press (2 seconds) state for custom hex deletion
   const [showHexDeleteMode, setShowHexDeleteMode] = useState(false);
-  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const [hexToDelete, setHexToDelete] = useState<string | null>(null);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const hoursWheelRef = useRef<HTMLDivElement | null>(null);
   const minutesWheelRef = useRef<HTMLDivElement | null>(null);
   const durationTrackRef = useRef<HTMLDivElement | null>(null);
@@ -145,8 +147,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setShowColorPicker(false);
     setShowIconPicker(false);
     setShowHexDeleteMode(false);
+    setHexToDelete(null);
     setShowCustomTimePicker(false);
   }, [editingTask, initialTemplate, isOpen, currentDay, initialStartTime, initialDuration, initialBlockId, uniformTaskColorEnabled, uniformTaskColor, accentColor]);
+
+  useEffect(() => () => {
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+  }, []);
 
   useEffect(() => {
     if (!showCustomTimePicker) return;
@@ -243,17 +250,27 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     }
   };
 
-  const handleCustomHexTouchStart = () => {
+  const handleCustomHexPressStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
     longPressTimerRef.current = setTimeout(() => {
       setShowHexDeleteMode(true);
       if (window.navigator?.vibrate) window.navigator.vibrate(30);
-    }, 2000); // 2 seconds hold
+    }, 2000);
   };
 
-  const handleCustomHexTouchEnd = () => {
+  const handleCustomHexPressEnd = () => {
     if (longPressTimerRef.current) {
       clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
     }
+  };
+
+  const handleConfirmDeleteHex = () => {
+    if (!hexToDelete || !onDeleteCustomHex) return;
+    onDeleteCustomHex(hexToDelete);
+    setHexToDelete(null);
+    setShowHexDeleteMode(false);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -280,6 +297,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   return (
+    <>
     <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md bg-stone-100 dark:bg-zinc-900 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
@@ -400,14 +418,14 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     </span>
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2.5 mb-2.5">
+                  <div className="grid grid-cols-[repeat(auto-fill,1.75rem)] gap-2.5 mb-2.5">
                     {APPLE_PALETTE.map((pal) => (
                       <button
                         key={pal.hex}
                         type="button"
                         onClick={() => handleColorPick(pal.hex)}
                         aria-label={pal.name}
-                        className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${
+                        className={`w-7 h-7 rounded-full transition-transform active:scale-90 active:opacity-60 ${
                           color.toLowerCase() === pal.hex.toLowerCase()
                             ? 'scale-110 ring-2 ring-offset-2 ring-[var(--accent-color)]'
                             : ''
@@ -416,22 +434,25 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       />
                     ))}
 
-                    {/* Saved Custom Hexes with long press 2s delete feature */}
                     {savedCustomHexes.map((hex) => {
                       const isSel = color.toLowerCase() === hex.toLowerCase();
                       return (
                         <div
                           key={hex}
-                          className="relative group/hex"
-                          onMouseDown={handleCustomHexTouchStart}
-                          onMouseUp={handleCustomHexTouchEnd}
-                          onTouchStart={handleCustomHexTouchStart}
-                          onTouchEnd={handleCustomHexTouchEnd}
+                          className={`relative w-7 h-7 ${showHexDeleteMode ? 'hex-delete-wobble' : ''}`}
+                          onPointerDown={handleCustomHexPressStart}
+                          onPointerUp={handleCustomHexPressEnd}
+                          onPointerLeave={handleCustomHexPressEnd}
+                          onPointerCancel={handleCustomHexPressEnd}
+                          onContextMenu={(event) => event.preventDefault()}
                         >
                           <button
                             type="button"
-                            onClick={() => handleColorPick(hex)}
-                            className={`w-7 h-7 rounded-full transition-transform active:scale-90 ${
+                            onClick={() => {
+                              if (!showHexDeleteMode) handleColorPick(hex);
+                            }}
+                            aria-label={`Choose color ${hex}`}
+                            className={`w-7 h-7 rounded-full transition-transform active:scale-90 active:opacity-60 ${
                               isSel ? 'scale-110 ring-2 ring-offset-2 ring-[var(--accent-color)]' : ''
                             }`}
                             style={{ backgroundColor: hex }}
@@ -441,18 +462,28 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onDeleteCustomHex(hex);
+                                setHexToDelete(hex);
                               }}
-                              className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full bg-rose-600 text-white flex items-center justify-center text-[9px] font-bold shadow-md hover:scale-110"
-                              title="Delete custom color"
+                              aria-label={`Delete saved color ${hex}`}
+                              className="absolute inset-0 z-10 flex items-center justify-center rounded-full bg-black/35 text-white shadow-sm transition-opacity hover:bg-black/50 active:opacity-60"
                             >
-                              ×
+                              <X className="w-4 h-4 stroke-[3]" />
                             </button>
                           )}
                         </div>
                       );
                     })}
                   </div>
+
+                  {showHexDeleteMode && (
+                    <button
+                      type="button"
+                      onClick={() => setShowHexDeleteMode(false)}
+                      className="mb-2 rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold text-slate-600 dark:bg-zinc-700 dark:text-zinc-200"
+                    >
+                      Done editing colors
+                    </button>
+                  )}
 
                   <div className="flex items-center gap-2 text-xs pt-1 border-t border-slate-100 dark:border-zinc-700/50">
                     <span className="text-slate-400">Hex:</span>
@@ -476,7 +507,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                     )}
                   </div>
                   <span className="text-[10px] text-slate-400 block mt-1">
-                    Hold any custom saved color for 2 seconds to delete.
+                    {showHexDeleteMode
+                      ? 'Tap the centered cross to remove a saved color.'
+                      : 'Hold any custom saved color for 2 seconds to edit.'}
                   </span>
                 </div>
               )}
@@ -880,5 +913,45 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         </div>
       )}
     </div>
+    {hexToDelete && onDeleteCustomHex && createPortal(
+      <div
+        className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs animate-in fade-in duration-150"
+        onClick={() => setHexToDelete(null)}
+      >
+        <div
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby="delete-hex-title"
+          aria-describedby="delete-hex-description"
+          className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl dark:bg-zinc-900"
+          onClick={(event) => event.stopPropagation()}
+        >
+          <h2 id="delete-hex-title" className="text-base font-semibold text-slate-900 dark:text-white">
+            Delete saved colour?
+          </h2>
+          <p id="delete-hex-description" className="mt-2 text-sm text-slate-600 dark:text-zinc-300">
+            Are you sure you want to delete this saved hex colour?
+          </p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setHexToDelete(null)}
+              className="rounded-xl bg-slate-100 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-200 dark:bg-zinc-800 dark:text-zinc-200 dark:hover:bg-zinc-700"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleConfirmDeleteHex}
+              className="rounded-xl bg-rose-600 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-rose-700"
+            >
+              Delete
+            </button>
+          </div>
+        </div>
+      </div>,
+      document.body
+    )}
+    </>
   );
 };
