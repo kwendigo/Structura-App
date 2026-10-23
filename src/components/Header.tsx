@@ -107,8 +107,8 @@ export const Header: React.FC<HeaderProps> = ({
   };
 
   return (
-    <header className="sticky top-0 z-[100] bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md pt-3 pb-2 px-3 border-b border-slate-100 dark:border-zinc-800/60 select-none">
-      <div className="flex items-center justify-between mb-3">
+    <header className="sticky top-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md pt-2 pb-1 px-3 select-none">
+      <div className="flex items-center justify-between mb-1">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -176,7 +176,7 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div
-        className="grid grid-cols-7 gap-1 text-center py-1 touch-pan-y"
+        className="mx-2 grid grid-cols-7 gap-0 text-center py-0 touch-pan-y"
         onTouchStart={handleWeekTouchStart}
         onTouchEnd={handleWeekTouchEnd}
         onTouchCancel={() => {
@@ -211,14 +211,14 @@ export const Header: React.FC<HeaderProps> = ({
                 }}
                 aria-label={`${short} ${dayNumber}${isCurrentDay ? ' (today)' : ''} - hold for options`}
                 aria-pressed={isSelected}
-                className="w-full flex flex-col items-center gap-1 group py-1 transition-all active:scale-95"
+                className="w-full flex flex-col items-center gap-0 group py-0.5 transition-all active:scale-95"
               >
-                <span className="text-[11px] font-medium text-slate-400 dark:text-zinc-500 group-hover:text-slate-700">
+                <span className="relative -top-0.5 text-[8px] font-medium text-slate-400 dark:text-zinc-500 group-hover:text-slate-700">
                   {short}
                 </span>
 
                 <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center text-sm transition-all ${
+                  className={`w-8 h-8 rounded-full flex items-center justify-center text-base font-bold transition-all ${
                     isSelected
                       ? 'text-white font-bold shadow-xs scale-105'
                       : isCurrentDay

@@ -67,7 +67,7 @@ export const TaskPickerModal: React.FC<TaskPickerModalProps> = ({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start sm:items-center justify-center p-3 pt-10 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-start sm:items-center justify-center p-3 pt-10 sm:p-4 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full max-w-md bg-stone-100 dark:bg-zinc-900 rounded-[36px] shadow-2xl p-5 border border-white/20 animate-in zoom-in-95 duration-150 flex flex-col max-h-[85vh]"
         onClick={(e) => e.stopPropagation()}

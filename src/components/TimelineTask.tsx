@@ -3,16 +3,11 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   ChevronDown,
   ChevronRight,
   Check,
-  MoreVertical,
-  Copy,
-  Edit2,
-  Trash2,
-  GripVertical,
   RotateCw,
   Target,
   Clock,
@@ -24,7 +19,6 @@ import { useLiftedDrag } from '../hooks/useLiftedDrag';
 import {
   calculateEndTime,
   calculateTaskProgress,
-  getProportionalNodeHeight,
   formatDuration,
   parseTimeToMinutes,
   minutesToTimeString,
@@ -34,6 +28,7 @@ import {
 interface TimelineTaskProps {
   task: Task;
   currentTimeMinutes: number;
+  realTimeMinutes?: number;
   use24Hour: boolean;
   isFirst: boolean;
   isLast: boolean;
@@ -52,6 +47,7 @@ interface TimelineTaskProps {
 export const TimelineTask: React.FC<TimelineTaskProps> = ({
   task,
   currentTimeMinutes,
+  realTimeMinutes = currentTimeMinutes,
   use24Hour,
   isFirst,
   isLast,
@@ -61,15 +57,10 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
   onToggleComplete,
   onToggleSubtask,
   onEditTask,
-  onDeleteTask,
-  onCopyTask,
   onOpenFocus,
   onUpdateTaskTime,
 }) => {
   const [subtasksOpen, setSubtasksOpen] = useState(true);
-  const [showMenu, setShowMenu] = useState(false);
-  const menuRef = useRef<HTMLDivElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
 
   const [isLifted, setIsLifted] = useState(false);
   const [dragOffsetY, setDragOffsetY] = useState(0);
@@ -78,32 +69,17 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
   const touchStartPos = useRef<{ y: number; startM: number } | null>(null);
   const isDraggingRef = useRef(false);
+  const didDragRef = useRef(false);
   const cardRef = useRef<HTMLDivElement>(null);
   const startClientYRef = useRef<number | null>(null);
   const liveSnappedStartMRef = useRef<number | null>(null);
 
   const isReminder = task.isReminder || task.durationMinutes === 0;
 
-  useEffect(() => {
-    if (!showMenu) return;
-
-    const handleOutsidePointerDown = (event: PointerEvent) => {
-      const target = event.target;
-      if (
-        target instanceof Node &&
-        !menuRef.current?.contains(target) &&
-        !menuButtonRef.current?.contains(target)
-      ) {
-        setShowMenu(false);
-      }
-    };
-
-    document.addEventListener('pointerdown', handleOutsidePointerDown);
-    return () => document.removeEventListener('pointerdown', handleOutsidePointerDown);
-  }, [showMenu]);
-
   const endTime = isReminder ? task.startTime : calculateEndTime(task.startTime, task.durationMinutes);
-  const nodeHeight = isReminder ? 56 : getProportionalNodeHeight(task.durationMinutes);
+  const nodeHeight = isReminder
+    ? 56
+    : Math.min(240, 56 + Math.max(0, task.durationMinutes - 5) * 1.2);
   const progress = calculateTaskProgress(task.startTime, isReminder ? 5 : task.durationMinutes, currentTimeMinutes);
 
   const isCompleted = task.completed;
@@ -114,10 +90,25 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
 
   const totalSubtasks = task.subtasks.length;
   const completedSubtasks = task.subtasks.filter((st) => st.completed).length;
+  const startMinutes = parseTimeToMinutes(task.startTime);
+  const taskEndMinutes = startMinutes + (isReminder ? 0 : task.durationMinutes);
+  const currentTimeInTask = !isReminder &&
+    realTimeMinutes >= startMinutes &&
+    realTimeMinutes < taskEndMinutes;
+  const currentTaskProgress = task.durationMinutes > 0
+    ? (realTimeMinutes - startMinutes) / task.durationMinutes
+    : 0;
+  const bubbleTopOffset = isOverlappingPrev ? -20 : isFirst ? 0 : 8;
+  const hourlyMarkers: number[] = [];
+  if (!isReminder && task.durationMinutes > 60) {
+    for (let hour = Math.floor(startMinutes / 60) * 60 + 60; hour < taskEndMinutes; hour += 60) {
+      hourlyMarkers.push(hour);
+    }
+  }
 
   const handleGestureStart = (e: React.TouchEvent | React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input') || target.closest('h3')) {
+    if (target.closest('button') || target.closest('input')) {
       return;
     }
 
@@ -126,10 +117,12 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
     touchStartPos.current = { y: clientY, startM };
     startClientYRef.current = clientY;
     isDraggingRef.current = false;
+    didDragRef.current = false;
 
     longPressTimerRef.current = setTimeout(() => {
       setIsLifted(true);
       isDraggingRef.current = true;
+      didDragRef.current = true;
       if (window.navigator?.vibrate) {
         window.navigator.vibrate(25);
       }
@@ -176,6 +169,9 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
       liveSnappedStartMRef.current = null;
       isDraggingRef.current = false;
       touchStartPos.current = null;
+      window.setTimeout(() => {
+        didDragRef.current = false;
+      }, 250);
     },
   });
 
@@ -190,10 +186,19 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         transform: isLifted ? `translateY(${dragOffsetY}px)` : undefined,
         touchAction: isLifted ? 'none' : undefined,
       }}
-      className={`relative flex items-start pl-1.5 pr-2 py-1 select-none group transition-all rounded-2xl ${
+      onClick={(event) => {
+        if (didDragRef.current) {
+          didDragRef.current = false;
+          return;
+        }
+        const target = event.target;
+        if (target instanceof Element && target.closest('button, input, textarea, select, a')) return;
+        onEditTask(task);
+      }}
+      className={`relative flex items-start px-1 py-1 select-none group transition-all rounded-2xl ${
         isLifted
           ? 'z-40 shadow-2xl scale-[1.02] bg-white/95 dark:bg-zinc-800/95 ring-1 ring-black/10 dark:ring-white/10 cursor-grabbing'
-          : ''
+          : 'cursor-pointer'
       }`}
       onTouchStart={handleGestureStart}
       onTouchMove={handleGestureMove}
@@ -211,7 +216,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
       )}
 
       <div
-        className="w-14 flex-shrink-0 text-right pr-2.5 flex flex-col justify-between"
+        className="relative w-10 flex-shrink-0 text-right pr-0.5 flex flex-col justify-between"
         style={{ minHeight: `${Math.max(52, nodeHeight)}px` }}
       >
         <div className="flex flex-col items-end">
@@ -238,10 +243,28 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
             {displayedEndTime}
           </span>
         )}
+        {hourlyMarkers.map((hour) => (
+          <span
+            key={hour}
+            className="timeline-hour-marker absolute right-0 z-20 -translate-y-1/2 whitespace-nowrap bg-white/90 dark:bg-zinc-950/90"
+            style={{ top: `${bubbleTopOffset + ((hour - startMinutes) / task.durationMinutes) * nodeHeight}px` }}
+          >
+            {minutesToTimeString(hour, use24Hour)}
+          </span>
+        ))}
+        {currentTimeInTask && (
+          <span
+            aria-label={`Current time ${minutesToTimeString(realTimeMinutes, true)}`}
+            className="timeline-current-time absolute right-0 z-30 -translate-y-1/2 whitespace-nowrap rounded-sm bg-white px-0.5 font-bold text-black shadow-sm dark:bg-zinc-950 dark:text-white"
+            style={{ top: `${bubbleTopOffset + currentTaskProgress * nodeHeight}px` }}
+          >
+            {minutesToTimeString(realTimeMinutes, true)}
+          </span>
+        )}
       </div>
 
       <div
-        className={`relative w-9 flex-shrink-0 flex flex-col items-center self-stretch ${
+        className={`relative ml-1 w-14 flex-shrink-0 flex flex-col items-center self-stretch ${
           isOverlappingPrev ? '-mt-5' : ''
         }`}
         style={{ minHeight: `${Math.max(52, nodeHeight)}px` }}
@@ -262,7 +285,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         )}
 
         <div
-          className={`relative w-8.5 rounded-full flex flex-col items-center justify-center overflow-hidden transition-all shadow-xs flex-shrink-0 ${
+          className={`relative w-14 min-h-14 rounded-full flex items-center justify-center overflow-hidden transition-all shadow-xs flex-shrink-0 p-3 ${
             isActive ? 'bg-slate-100 dark:bg-zinc-800' : ''
           } ${
             isOverlappingPrev
@@ -270,7 +293,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
               : ''
           }`}
           style={{
-            height: isReminder ? '36px' : `${Math.max(52, nodeHeight)}px`,
+            height: `${Math.max(56, nodeHeight)}px`,
             backgroundColor: isPast ? task.color : isActive ? undefined : `${task.color}18`,
           }}
         >
@@ -293,19 +316,12 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
             }}
           >
             {isReminder ? (
-              <Bell className="w-4 h-4 stroke-[2.2]" />
+              <Bell className="w-5 h-5 stroke-[2.2]" />
             ) : (
-              <IconRenderer name={task.icon} className="w-5 h-5 stroke-[2.2] drop-shadow-2xs" />
+              <IconRenderer name={task.icon} className="w-6 h-6 stroke-[2.2] drop-shadow-2xs" />
             )}
           </div>
 
-          {isActive && !isReminder && (
-            <div className="absolute bottom-1 z-10 w-full flex flex-col items-center">
-              <span className="text-[8px] font-bold tracking-tight text-white px-1 py-0.2 rounded-full bg-black/40 shadow-xs leading-none">
-                {progress.remainingMinutes}m
-              </span>
-            </div>
-          )}
         </div>
 
         {!isLast && (
@@ -319,10 +335,10 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         )}
       </div>
 
-      <div className="flex-1 ml-3 pr-1 pt-0.5 min-w-0">
-        <div className="flex items-center flex-wrap gap-x-2 gap-y-0.5 text-[11px] text-slate-400 dark:text-zinc-500 font-medium tracking-tight">
+      <div className="flex-1 ml-3 pr-0.5 min-w-0 self-center">
+        <div className="timeline-task-metadata flex items-center flex-wrap gap-x-2 gap-y-0 text-[11px] text-slate-400 dark:text-zinc-500 tracking-tight">
           {isActive ? (
-            <span className="font-semibold" style={{ color: accentColor }}>
+            <span style={{ fontWeight: 400 }}>
               {formatRemainingClock(progress.remainingMinutes)}
             </span>
           ) : isReminder ? (
@@ -348,22 +364,18 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
             </span>
           )}
 
-          {isPast && (
-            <span className="text-[10px] font-normal text-slate-400 dark:text-zinc-500">
-              · Past Activity
-            </span>
-          )}
         </div>
 
-        <div className="flex items-center justify-between gap-1.5 mt-1">
+        <div className="flex items-center justify-between gap-1.5 mt-0.5">
           <h3
             onClick={() => onEditTask(task)}
             title="Click to edit task"
-            className={`text-sm md:text-base font-semibold leading-snug cursor-pointer transition-colors break-words hover:opacity-80 ${
+            className={`timeline-task-title text-xs leading-tight transition-colors break-words ${
               isCompleted
                 ? 'line-through text-slate-400 dark:text-zinc-500 font-normal'
                 : 'text-slate-800 dark:text-zinc-100'
             }`}
+            style={{ fontWeight: isCompleted ? 400 : 700 }}
           >
             {task.title}
           </h3>
@@ -463,87 +475,6 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         >
           {isCompleted && <Check className="w-3.5 h-3.5 text-white stroke-[3]" />}
         </button>
-
-        <div
-          title="Drag to move freely across timeline"
-          className="p-1 text-slate-300 dark:text-zinc-600 hover:text-slate-600 dark:hover:text-zinc-300 cursor-grab active:cursor-grabbing transition-colors"
-        >
-          <GripVertical className="w-4 h-4 stroke-[2]" />
-        </div>
-
-        <div className="relative">
-          <button
-            ref={menuButtonRef}
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setShowMenu(!showMenu);
-            }}
-            aria-label="Task options"
-            className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-zinc-300 rounded-lg transition-colors"
-          >
-            <MoreVertical className="w-4 h-4" />
-          </button>
-
-          {showMenu && (
-            <div
-              ref={menuRef}
-              className="absolute right-0 top-6 z-30 bg-white dark:bg-zinc-800 rounded-2xl shadow-xl ring-1 ring-black/5 dark:ring-white/10 p-1.5 min-w-[160px] animate-in fade-in zoom-in-95 duration-100"
-              onClick={(e) => e.stopPropagation()}
-            >
-              {onOpenFocus && isActive && !isReminder && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowMenu(false);
-                    onOpenFocus(task);
-                  }}
-                    style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
-                    className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:brightness-95 rounded-xl transition-colors text-left font-semibold"
-                >
-                  <Target className="w-3.5 h-3.5" />
-                  <span>Start Focus Session</span>
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onEditTask(task);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-700/60 rounded-xl transition-colors text-left"
-              >
-                <Edit2 className="w-3.5 h-3.5 text-slate-500" />
-                <span>Edit activity</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onCopyTask(task);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-slate-700 dark:text-zinc-200 hover:bg-slate-100 dark:hover:bg-zinc-700/60 rounded-xl transition-colors text-left"
-              >
-                <Copy className="w-3.5 h-3.5 text-slate-500" />
-                <span>Duplicate in front of current task</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setShowMenu(false);
-                  onDeleteTask(task.id);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-1.5 text-xs text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors text-left"
-              >
-                <Trash2 className="w-3.5 h-3.5 text-rose-500" />
-                <span>Delete activity</span>
-              </button>
-            </div>
-          )}
-        </div>
       </div>
     </div>
   );

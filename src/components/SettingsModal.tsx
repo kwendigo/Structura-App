@@ -21,15 +21,19 @@ import {
   ExternalLink,
   Clock,
   Plus,
+  Copy,
 } from 'lucide-react';
 import { AppSettings } from '../types';
 import { minutesToTimeString, formatDuration } from '../utils/scheduleLogic';
-import { APPLE_PALETTE, RECORDED_TASKS_LIBRARY } from '../utils/storage';
+import { APPLE_PALETTE, RECORDED_TASKS_LIBRARY, saveStoredSettings } from '../utils/storage';
+import { generateCloudSyncKey } from '../utils/cloudSync';
 
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   settings: AppSettings;
+  cloudSyncStatus: 'disabled' | 'setup' | 'syncing' | 'active' | 'error';
+  cloudSyncError: string | null;
   onUpdateSettings: (newSettings: AppSettings) => void;
   onResetDefaultSchedule: () => void;
 }
@@ -40,6 +44,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   isOpen,
   onClose,
   settings,
+  cloudSyncStatus,
+  cloudSyncError,
   onUpdateSettings,
   onResetDefaultSchedule,
 }) => {
@@ -50,8 +56,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   const [copiedStatus, setCopiedStatus] = useState<string | null>(null);
   const [newPresetVal, setNewPresetVal] = useState<string>('');
   const [secretSaved, setSecretSaved] = useState(false);
-  const secretSavedTimeoutRef = useRef<number | null>(null);
-  const secretSavedClearTimeoutRef = useRef<number | null>(null);
+  const [secretSaveFailed, setSecretSaveFailed] = useState(false);
+  const [cloudKeyMessage, setCloudKeyMessage] = useState<string | null>(null);
+  const secretWriteSucceededRef = useRef(false);
 
   const currentAccent = settings.accentColor || '#007AFF';
   const uniformEnabled = settings.uniformTaskColorEnabled || false;
@@ -62,24 +69,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   useEffect(() => {
     setActiveSection('main');
     setSecretSaved(false);
-    if (secretSavedTimeoutRef.current !== null) {
-      window.clearTimeout(secretSavedTimeoutRef.current);
-      secretSavedTimeoutRef.current = null;
-    }
-    if (secretSavedClearTimeoutRef.current !== null) {
-      window.clearTimeout(secretSavedClearTimeoutRef.current);
-      secretSavedClearTimeoutRef.current = null;
-    }
+    setSecretSaveFailed(false);
+    secretWriteSucceededRef.current = false;
   }, [isOpen]);
-
-  useEffect(() => () => {
-    if (secretSavedTimeoutRef.current !== null) {
-      window.clearTimeout(secretSavedTimeoutRef.current);
-    }
-    if (secretSavedClearTimeoutRef.current !== null) {
-      window.clearTimeout(secretSavedClearTimeoutRef.current);
-    }
-  }, []);
 
   if (!isOpen) return null;
 
@@ -155,7 +147,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md bg-stone-100 dark:bg-zinc-900 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
@@ -185,7 +177,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
               : activeSection === 'widgets'
               ? 'Widgets'
               : activeSection === 'icloud'
-              ? 'iCloud Sync'
+              ? 'Cloud Sync'
               : 'Structura'}
           </div>
 
@@ -313,7 +305,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Cloud className="w-4 h-4" />
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 block">iCloud Sync & Backup</span>
+                      <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 block">Cloud Sync & Backup</span>
                       <span className="text-[11px] text-slate-400 dark:text-zinc-500">Encrypted cloud sync & JSON export</span>
                     </div>
                   </div>
@@ -661,23 +653,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       autoComplete="new-password"
                       value={settings.notificationApiSecret || ''}
                       onChange={(event) => {
-                        onUpdateSettings({
+                        const updatedSettings = {
                           ...settings,
                           notificationApiSecret: event.target.value,
-                        });
+                        };
+                        secretWriteSucceededRef.current = saveStoredSettings(updatedSettings);
+                        onUpdateSettings(updatedSettings);
                         setSecretSaved(false);
-                        if (secretSavedTimeoutRef.current !== null) {
-                          window.clearTimeout(secretSavedTimeoutRef.current);
-                        }
-                        if (secretSavedClearTimeoutRef.current !== null) {
-                          window.clearTimeout(secretSavedClearTimeoutRef.current);
-                        }
-                        secretSavedTimeoutRef.current = window.setTimeout(() => {
-                          setSecretSaved(true);
-                          secretSavedClearTimeoutRef.current = window.setTimeout(() => {
-                            setSecretSaved(false);
-                          }, 1800);
-                        }, 350);
+                        setSecretSaveFailed(false);
+                      }}
+                      onBlur={() => {
+                        setSecretSaved(secretWriteSucceededRef.current);
+                        setSecretSaveFailed(!secretWriteSucceededRef.current);
                       }}
                       placeholder="Enter the secret configured in Vercel"
                       className="min-w-0 flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-500 dark:bg-zinc-700 dark:text-white"
@@ -688,6 +675,16 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       </span>
                     )}
                   </div>
+                  {secretSaveFailed && (
+                    <p role="alert" className="text-[10px] text-rose-600 dark:text-rose-400">
+                      Could not save the secret in this browser. Check storage permissions and try again.
+                    </p>
+                  )}
+                  {!settings.notificationApiSecret?.trim() && (
+                    <p role="status" className="text-[10px] text-slate-500 dark:text-zinc-400">
+                      Add your Vercel scheduler secret here to enable task reminders.
+                    </p>
+                  )}
                   <p className="text-[10px] text-slate-500 dark:text-zinc-400">
                     Match the scheduler secret configured in Vercel. Stored in this browser’s local storage.
                   </p>
@@ -733,8 +730,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <Cloud className="w-5 h-5" />
                     </div>
                     <div>
-                      <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 block">iCloud Sync</span>
-                      <span className="text-[11px] text-slate-400">Synced across your iPad, Mac & iPhone</span>
+                      <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 block">Encrypted Cloud Backup</span>
+                      <span className="text-[11px] text-slate-400">Restore tasks with your recovery key</span>
                     </div>
                   </div>
                   <button
@@ -749,6 +746,107 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       }`}
                     />
                   </button>
+                </div>
+                <div className="space-y-2 border-t border-slate-100 pt-3 dark:border-zinc-700">
+                  <label
+                    htmlFor="cloud-sync-recovery-key"
+                    className="block text-[11px] font-medium text-slate-600 dark:text-zinc-300"
+                  >
+                    Recovery key
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="cloud-sync-recovery-key"
+                      type="text"
+                      autoComplete="off"
+                      autoCapitalize="none"
+                      spellCheck={false}
+                      value={settings.cloudSyncKey || ''}
+                      onChange={(event) => {
+                        setCloudKeyMessage(null);
+                        onUpdateSettings({
+                          ...settings,
+                          cloudSyncKey: event.target.value.trim(),
+                          cloudSyncLastBackupAt: undefined,
+                        });
+                      }}
+                      placeholder="Paste or generate a recovery key"
+                      className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-800 outline-none focus:border-blue-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-100"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        try {
+                          const key = generateCloudSyncKey();
+                          setCloudKeyMessage('New key generated. Save it somewhere safe.');
+                          onUpdateSettings({
+                            ...settings,
+                            cloudSyncKey: key,
+                            cloudSyncLastBackupAt: undefined,
+                          });
+                        } catch (error) {
+                          console.error('Could not generate cloud recovery key', error);
+                          setCloudKeyMessage('Secure key generation is unavailable in this browser.');
+                        }
+                      }}
+                      className="shrink-0 rounded-xl bg-slate-100 px-3 py-2 text-[11px] font-medium text-slate-700 dark:bg-zinc-700 dark:text-zinc-100"
+                    >
+                      Generate
+                    </button>
+                  </div>
+                  {settings.cloudSyncKey && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void (async () => {
+                          try {
+                            await navigator.clipboard.writeText(settings.cloudSyncKey || '');
+                            setCloudKeyMessage('Recovery key copied. Store it somewhere safe.');
+                          } catch (error) {
+                            console.error('Could not copy cloud recovery key', error);
+                            setCloudKeyMessage('Could not copy the key. Select and copy it manually.');
+                          }
+                        })();
+                      }}
+                      className="inline-flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800 dark:text-zinc-400 dark:hover:text-zinc-100"
+                    >
+                      <Copy className="h-3 w-3" />
+                      Copy recovery key
+                    </button>
+                  )}
+                  <p className="text-[10px] leading-relaxed text-slate-400">
+                    Tasks are encrypted before upload. Keep this key: it cannot be recovered, and you will need it to restore tasks after reinstalling.
+                  </p>
+                  <p
+                    role={cloudSyncStatus === 'error' ? 'alert' : 'status'}
+                    className={`text-[11px] ${
+                      cloudSyncStatus === 'active'
+                        ? 'text-emerald-600 dark:text-emerald-400'
+                        : cloudSyncStatus === 'error'
+                          ? 'text-red-500'
+                          : 'text-slate-500 dark:text-zinc-400'
+                    }`}
+                  >
+                    {cloudSyncStatus === 'active'
+                      ? 'Cloud Connection: Active'
+                      : cloudSyncStatus === 'syncing'
+                        ? 'Cloud Connection: Syncing…'
+                        : cloudSyncStatus === 'disabled'
+                          ? 'Cloud Connection: Off'
+                          : cloudSyncStatus === 'error'
+                            ? `Cloud Connection: Error${cloudSyncError ? ` — ${cloudSyncError}` : ''}`
+                            : 'Cloud Connection: Set up a recovery key'}
+                  </p>
+                  {settings.cloudSyncLastBackupAt && (
+                    <p className="text-[10px] text-slate-400">
+                      Last Backed Up: {new Date(settings.cloudSyncLastBackupAt).toLocaleString()}
+                    </p>
+                  )}
+                  {cloudKeyMessage && (
+                    <p role="status" className="text-[10px] text-slate-500 dark:text-zinc-400">
+                      {cloudKeyMessage}
+                    </p>
+                  )}
                 </div>
               </div>
             </div>

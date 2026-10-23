@@ -150,11 +150,13 @@ export function loadStoredSettings(): AppSettings {
   return DEFAULT_SETTINGS;
 }
 
-export function saveStoredSettings(settings: AppSettings): void {
+export function saveStoredSettings(settings: AppSettings): boolean {
   try {
     localStorage.setItem(STORAGE_KEYS.SETTINGS, JSON.stringify(settings));
+    return true;
   } catch (e) {
     console.warn('Failed to save settings to localStorage', e);
+    return false;
   }
 }
 

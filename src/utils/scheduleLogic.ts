@@ -432,7 +432,7 @@ export function calculatePomodoroPlan(
     intervals.push({
       id: `work-${index + 1}`,
       type: 'work',
-      title: `Focus Sprint ${index + 1}`,
+      title: `Work Session ${index + 1}`,
       startTime: formatPomodoroTime(cursor),
       endTime: formatPomodoroTime(workEnd),
       startMinutes: cursor,
@@ -446,7 +446,7 @@ export function calculatePomodoroPlan(
       intervals.push({
         id: `break-${index + 1}`,
         type: 'break',
-        title: `${actualBreak}m Rest Break`,
+        title: 'Break',
         startTime: formatPomodoroTime(cursor),
         endTime: formatPomodoroTime(breakEnd),
         startMinutes: cursor,

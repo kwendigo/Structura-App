@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Plus,
   Folder,
@@ -41,11 +41,17 @@ import {
 } from './utils/storage';
 import {
   cancelTaskNotification,
-  getNextTargetWeekday,
+  getNextScheduledAt,
   getOneSignalSubscriptionId,
   initializeOneSignal,
   scheduleTaskNotification,
 } from './utils/notifications';
+import {
+  decryptTasks,
+  fetchCloudTaskBackup,
+  isValidCloudSyncKey,
+  uploadCloudTaskBackup,
+} from './utils/cloudSync';
 import { Header } from './components/Header';
 import { TimelineTask } from './components/TimelineTask';
 import { UnallocatedGap } from './components/UnallocatedGap';
@@ -64,8 +70,15 @@ export default function App() {
   const [tasks, setTasks] = useState<Task[]>(loadStoredTasks);
   const [blocks, setBlocks] = useState<RoutineBlock[]>(loadStoredBlocks);
   const [settings, setSettings] = useState<AppSettings>(loadStoredSettings);
+  const [cloudSyncStatus, setCloudSyncStatus] = useState<'disabled' | 'setup' | 'syncing' | 'active' | 'error'>('setup');
+  const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
+  const [cloudSyncReadyKey, setCloudSyncReadyKey] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('wed');
   const [nowMinutes, setNowMinutes] = useState<number>(() => {
+    const d = new Date();
+    return d.getHours() * 60 + d.getMinutes();
+  });
+  const [realTimeMinutes, setRealTimeMinutes] = useState<number>(() => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
   });
@@ -95,6 +108,10 @@ export default function App() {
 
   const [clipboardDay, setClipboardDay] = useState<DayOfWeek | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const settingsRef = useRef(settings);
+  const cloudSyncWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const cloudSyncWriteVersionRef = useRef(0);
+  settingsRef.current = settings;
 
   useEffect(() => {
     saveStoredTasks(tasks);
@@ -109,12 +126,102 @@ export default function App() {
   }, [settings]);
 
   useEffect(() => {
+    const recoveryKey = settings.cloudSyncKey?.trim() || '';
+    if (settings.iCloudSyncEnabled === false) {
+      setCloudSyncReadyKey(null);
+      setCloudSyncStatus('disabled');
+      setCloudSyncError(null);
+      return;
+    }
+    if (!recoveryKey) {
+      setCloudSyncReadyKey(null);
+      setCloudSyncStatus('setup');
+      setCloudSyncError(null);
+      return;
+    }
+    if (!isValidCloudSyncKey(recoveryKey)) {
+      setCloudSyncReadyKey(null);
+      setCloudSyncStatus('error');
+      setCloudSyncError('Enter a valid recovery key or generate a new one.');
+      return;
+    }
+
+    let cancelled = false;
+    setCloudSyncReadyKey(null);
+    setCloudSyncStatus('syncing');
+    setCloudSyncError(null);
+
+    void (async () => {
+      try {
+        const backup = await fetchCloudTaskBackup(recoveryKey);
+        if (cancelled) return;
+        if (backup) {
+          const restoredTasks = await decryptTasks(backup.payload, recoveryKey);
+          if (cancelled) return;
+          setTasks(restoredTasks);
+          saveStoredTasks(restoredTasks);
+          setSettings((previous) => ({
+            ...previous,
+            cloudSyncLastBackupAt: backup.updatedAt,
+          }));
+        }
+        setCloudSyncReadyKey(recoveryKey);
+      } catch (error) {
+        if (cancelled) return;
+        console.error('Could not restore tasks from cloud sync', error);
+        setCloudSyncStatus('error');
+        setCloudSyncError(error instanceof Error ? error.message : 'Cloud restore failed.');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [settings.cloudSyncKey, settings.iCloudSyncEnabled]);
+
+  useEffect(() => {
+    const recoveryKey = settings.cloudSyncKey?.trim() || '';
+    const version = ++cloudSyncWriteVersionRef.current;
+    if (
+      settings.iCloudSyncEnabled === false ||
+      cloudSyncReadyKey !== recoveryKey ||
+      !isValidCloudSyncKey(recoveryKey)
+    ) return;
+
+    cloudSyncWriteQueueRef.current = cloudSyncWriteQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        if (
+          settingsRef.current.iCloudSyncEnabled === false ||
+          settingsRef.current.cloudSyncKey?.trim() !== recoveryKey
+        ) return;
+        setCloudSyncStatus('syncing');
+        setCloudSyncError(null);
+        try {
+          const updatedAt = await uploadCloudTaskBackup(recoveryKey, tasks);
+          if (version !== cloudSyncWriteVersionRef.current) return;
+          setSettings((previous) => ({
+            ...previous,
+            cloudSyncLastBackupAt: updatedAt,
+          }));
+          setCloudSyncStatus('active');
+        } catch (error) {
+          if (version !== cloudSyncWriteVersionRef.current) return;
+          console.error('Could not back up tasks to cloud sync', error);
+          setCloudSyncStatus('error');
+          setCloudSyncError(error instanceof Error ? error.message : 'Cloud backup failed.');
+        }
+      });
+  }, [tasks, settings.cloudSyncKey, settings.iCloudSyncEnabled, cloudSyncReadyKey]);
+
+  useEffect(() => {
     const interval = setInterval(() => {
+      const d = new Date();
+      setRealTimeMinutes(d.getHours() * 60 + d.getMinutes());
       if (!settings.simulatedTimeEnabled) {
-        const d = new Date();
         setNowMinutes(d.getHours() * 60 + d.getMinutes());
       }
-    }, 10000);
+    }, 60000);
     return () => clearInterval(interval);
   }, [settings.simulatedTimeEnabled]);
 
@@ -266,17 +373,14 @@ export default function App() {
       showToast(`Added "${finalData.title}"`);
     }
 
-    if (settings.notificationsEnabled !== false) {
+    if (settings.notificationsEnabled !== false && settings.notificationApiSecret?.trim()) {
       void (async () => {
         try {
-          if (!settings.notificationApiSecret?.trim()) {
-            throw new Error('Set the scheduler secret in Settings before scheduling task notifications.');
-          }
-          const targetedWeekday = getNextTargetWeekday(savedTask);
+          const scheduledAt = getNextScheduledAt(savedTask);
           const subscriptionId = await getOneSignalSubscriptionId();
           const result = await scheduleTaskNotification(
             savedTask,
-            targetedWeekday,
+            scheduledAt,
             subscriptionId,
             settings.notificationApiSecret || '',
             existingTask?.scheduledNotificationId
@@ -286,7 +390,7 @@ export default function App() {
               ? { ...task, scheduledNotificationId: result.notificationId }
               : task)
           );
-          showToast(result.warning || `Notification scheduled for ${targetedWeekday.toUpperCase()}`);
+          showToast(result.warning || `Reminder scheduled for ${savedTask.startTime}`);
         } catch (error) {
           console.error('Could not schedule task notification', error);
           const message = error instanceof Error ? error.message : 'Unknown notification error.';
@@ -513,6 +617,7 @@ export default function App() {
                     key={t.id}
                     task={t}
                     currentTimeMinutes={effectiveCurrentTimeMinutes}
+                    realTimeMinutes={realTimeMinutes}
                     use24Hour={settings.use24Hour}
                     isFirst={idx === 0}
                     isLast={idx === blockTasks.length - 1}
@@ -554,6 +659,7 @@ export default function App() {
             startTime={item.startTime}
             endTime={item.endTime}
             durationMinutes={item.durationMinutes}
+            realTimeMinutes={realTimeMinutes}
             prevTaskColor={lastColor}
             isPast={isPastGap}
             onQuickAdd={handleQuickAddGap}
@@ -580,6 +686,7 @@ export default function App() {
               key={task.id}
               task={task}
               currentTimeMinutes={effectiveCurrentTimeMinutes}
+              realTimeMinutes={realTimeMinutes}
               use24Hour={settings.use24Hour}
               isFirst={index === 0}
               isLast={index === timelineItems.length - 1}
@@ -789,6 +896,8 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         settings={settings}
+        cloudSyncStatus={cloudSyncStatus}
+        cloudSyncError={cloudSyncError}
         onUpdateSettings={(newSettings) => {
           if (settings.notificationsEnabled !== false && newSettings.notificationsEnabled === false) {
             const scheduledTasks = tasks.filter((task) => task.scheduledNotificationId);

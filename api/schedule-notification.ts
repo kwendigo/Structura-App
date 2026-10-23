@@ -2,27 +2,22 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { env } from 'node:process';
 
-type Weekday = 'sun' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat';
-
 interface TaskPayload {
   title: string;
   startTime: string;
-  days: Weekday[];
   isReminder?: boolean;
 }
 
 interface ScheduleRequest {
   task?: TaskPayload;
-  targetedWeekday?: Weekday;
+  scheduledAt?: string;
   subscriptionId?: string;
-  timeZone?: string;
   previousNotificationId?: string;
   notificationId?: string;
 }
 
 type VercelRequest = IncomingMessage & { body?: unknown };
 
-const WEEKDAYS: Weekday[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function respond(res: ServerResponse, status: number, body: Record<string, unknown>): void {
@@ -61,95 +56,22 @@ function hasSameOrigin(req: VercelRequest): boolean {
 function hasValidSchedulerSecret(req: VercelRequest): boolean {
   const expected = env.ONESIGNAL_SCHEDULER_SECRET;
   const suppliedHeader = req.headers['x-scheduler-secret'];
-  if (!expected || typeof suppliedHeader !== 'string' || suppliedHeader.length > 1024) return false;
+  const authorization = req.headers.authorization;
+  const bearerSecret = typeof authorization === 'string'
+    ? /^Bearer (.+)$/i.exec(authorization)?.[1]
+    : undefined;
+  const suppliedSecret = typeof suppliedHeader === 'string' ? suppliedHeader : bearerSecret;
+  if (!expected || !suppliedSecret || suppliedSecret.length > 1024) return false;
 
   const expectedHash = createHash('sha256').update(expected).digest();
-  const suppliedHash = createHash('sha256').update(suppliedHeader).digest();
+  const suppliedHash = createHash('sha256').update(suppliedSecret).digest();
   return timingSafeEqual(expectedHash, suppliedHash);
 }
 
-function getDateParts(date: Date, timeZone: string): Record<string, string> {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hourCycle: 'h23',
-  }).formatToParts(date);
-  return Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-}
-
-function localTimeToUtc(
-  year: number,
-  month: number,
-  day: number,
-  hour: number,
-  minute: number,
-  timeZone: string
-): Date | null {
-  const desiredAsUtc = Date.UTC(year, month - 1, day, hour, minute);
-  let timestamp = desiredAsUtc;
-
-  for (let attempt = 0; attempt < 4; attempt += 1) {
-    const local = getDateParts(new Date(timestamp), timeZone);
-    const representedAsUtc = Date.UTC(
-      Number(local.year),
-      Number(local.month) - 1,
-      Number(local.day),
-      Number(local.hour),
-      Number(local.minute),
-      Number(local.second)
-    );
-    timestamp += desiredAsUtc - representedAsUtc;
-  }
-
-  const result = new Date(timestamp);
-  const local = getDateParts(result, timeZone);
-  if (
-    Number(local.year) !== year ||
-    Number(local.month) !== month ||
-    Number(local.day) !== day ||
-    Number(local.hour) !== hour ||
-    Number(local.minute) !== minute
-  ) {
-    return null;
-  }
-  return result;
-}
-
-function getNextOccurrence(
-  weekday: Weekday,
-  startTime: string,
-  timeZone: string,
-  now = new Date()
-): Date | null {
-  const [hour, minute] = startTime.split(':').map(Number);
-  const localNow = getDateParts(now, timeZone);
-  const baseDate = new Date(Date.UTC(
-    Number(localNow.year),
-    Number(localNow.month) - 1,
-    Number(localNow.day)
-  ));
-
-  for (let offset = 0; offset <= 7; offset += 1) {
-    const candidateDate = new Date(baseDate);
-    candidateDate.setUTCDate(baseDate.getUTCDate() + offset);
-    if (WEEKDAYS[candidateDate.getUTCDay()] !== weekday) continue;
-
-    const candidate = localTimeToUtc(
-      candidateDate.getUTCFullYear(),
-      candidateDate.getUTCMonth() + 1,
-      candidateDate.getUTCDate(),
-      hour,
-      minute,
-      timeZone
-    );
-    if (candidate && candidate.getTime() > now.getTime() + 60_000) return candidate;
-  }
-  return null;
+function hasValidBearerSchedulerSecret(req: VercelRequest): boolean {
+  const authorization = req.headers.authorization;
+  if (typeof authorization !== 'string' || !/^Bearer .+$/i.test(authorization)) return false;
+  return hasValidSchedulerSecret(req);
 }
 
 function formatOneSignalUtc(date: Date): string {
@@ -163,7 +85,7 @@ async function callOneSignal(
   body?: Record<string, unknown>
 ): Promise<Response> {
   const appId = env.ONESIGNAL_APP_ID;
-  const apiKey = env.ONESIGNAL_REST_API_KEY;
+  const apiKey = env.ONESIGNAL_REST_API_KEY || env.ONESIGNAL_API_KEY;
   if (!appId || !apiKey) {
     throw new Error('OneSignal server configuration is missing.');
   }
@@ -188,7 +110,7 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
     respond(res, 405, { error: 'Method not allowed.' });
     return;
   }
-  if (!hasSameOrigin(req)) {
+  if (!hasSameOrigin(req) && !hasValidBearerSchedulerSecret(req)) {
     respond(res, 403, { error: 'Requests must come from this app origin.' });
     return;
   }
@@ -200,7 +122,7 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
     respond(res, 401, { error: 'A valid scheduler secret is required.' });
     return;
   }
-  if (!env.ONESIGNAL_APP_ID || !env.ONESIGNAL_REST_API_KEY) {
+  if (!env.ONESIGNAL_APP_ID || !(env.ONESIGNAL_REST_API_KEY || env.ONESIGNAL_API_KEY)) {
     respond(res, 503, { error: 'OneSignal server environment variables are not configured.' });
     return;
   }
@@ -235,7 +157,6 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
   }
 
   const task = body.task;
-  const weekday = body.targetedWeekday;
   if (
     !task ||
     typeof task.title !== 'string' ||
@@ -243,32 +164,24 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
     task.title.length > 120 ||
     typeof task.startTime !== 'string' ||
     !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(task.startTime) ||
-    !Array.isArray(task.days) ||
-    task.days.length === 0 ||
-    task.days.some((day) => typeof day !== 'string' || !WEEKDAYS.includes(day as Weekday)) ||
-    typeof weekday !== 'string' ||
-    !WEEKDAYS.includes(weekday as Weekday) ||
-    !task.days.includes(weekday as Weekday) ||
+    typeof body.scheduledAt !== 'string' ||
+    !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(body.scheduledAt) ||
     typeof body.subscriptionId !== 'string' ||
     !UUID_PATTERN.test(body.subscriptionId) ||
-    typeof body.timeZone !== 'string' ||
-    body.timeZone.length > 100 ||
     (body.previousNotificationId !== undefined &&
       (typeof body.previousNotificationId !== 'string' || !UUID_PATTERN.test(body.previousNotificationId)))
   ) {
-    respond(res, 400, { error: 'The task, weekday, subscription, or time zone is invalid.' });
+    respond(res, 400, { error: 'The task, scheduled time, or subscription is invalid.' });
     return;
   }
 
-  let scheduledAt: Date | null;
-  try {
-    scheduledAt = getNextOccurrence(weekday as Weekday, task.startTime, body.timeZone);
-  } catch {
-    respond(res, 400, { error: 'The time zone is invalid.' });
-    return;
-  }
-  if (!scheduledAt) {
-    respond(res, 400, { error: 'No valid upcoming local time was found for this weekday.' });
+  const scheduledAt = new Date(body.scheduledAt);
+  if (
+    !Number.isFinite(scheduledAt.getTime()) ||
+    scheduledAt.toISOString() !== body.scheduledAt ||
+    scheduledAt.getTime() <= Date.now()
+  ) {
+    respond(res, 400, { error: 'The scheduled task time must be in the future.' });
     return;
   }
 
@@ -278,7 +191,7 @@ export default async function handler(req: VercelRequest, res: ServerResponse): 
       include_subscription_ids: [body.subscriptionId],
       target_channel: 'push',
       headings: { en: task.title.trim() },
-      contents: { en: task.isReminder ? `Reminder at ${task.startTime}` : `Starting at ${task.startTime}` },
+      contents: { en: task.title.trim() },
       send_after: formatOneSignalUtc(scheduledAt),
     });
     const result: unknown = await response.json().catch(() => null);

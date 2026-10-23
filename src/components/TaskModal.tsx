@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import {
   X,
   Plus,
@@ -16,11 +16,17 @@ import {
   RotateCw,
   Target,
   Bookmark,
+  Bell,
 } from 'lucide-react';
 import { Task, Subtask, DayOfWeek, RoutineBlock, TaskTemplate } from '../types';
 import { DAYS_OF_WEEK, formatDuration, calculateEndTime } from '../utils/scheduleLogic';
 import { APPLE_PALETTE } from '../utils/storage';
 import { AVAILABLE_ICONS, IconRenderer } from './IconRenderer';
+
+const formatDurationOption = (minutes: number) => {
+  if (minutes < 60) return `${minutes}m`;
+  return `${Number((minutes / 60).toFixed(2))}h`;
+};
 
 interface TaskModalProps {
   isOpen: boolean;
@@ -69,6 +75,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [startTime, setStartTime] = useState('09:00');
   const [durationMinutes, setDurationMinutes] = useState(30);
   const [isReminder, setIsReminder] = useState(false);
+  const [showCustomTimePicker, setShowCustomTimePicker] = useState(false);
+  const [customHours, setCustomHours] = useState(0);
+  const [customMinutes, setCustomMinutes] = useState(0);
+  const [durationIndicator, setDurationIndicator] = useState<{ left: number; width: number } | null>(null);
   const [icon, setIcon] = useState('laptop');
   const [color, setColor] = useState('#007AFF');
   const [customHex, setCustomHex] = useState('');
@@ -86,6 +96,10 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   // Long press (2 seconds) state for custom hex deletion
   const [showHexDeleteMode, setShowHexDeleteMode] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const hoursWheelRef = useRef<HTMLDivElement | null>(null);
+  const minutesWheelRef = useRef<HTMLDivElement | null>(null);
+  const durationTrackRef = useRef<HTMLDivElement | null>(null);
+  const durationSlotRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
   useEffect(() => {
     if (editingTask) {
@@ -131,12 +145,61 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setShowColorPicker(false);
     setShowIconPicker(false);
     setShowHexDeleteMode(false);
+    setShowCustomTimePicker(false);
   }, [editingTask, initialTemplate, isOpen, currentDay, initialStartTime, initialDuration, initialBlockId, uniformTaskColorEnabled, uniformTaskColor, accentColor]);
+
+  useEffect(() => {
+    if (!showCustomTimePicker) return;
+    requestAnimationFrame(() => {
+      if (hoursWheelRef.current) hoursWheelRef.current.scrollTop = customHours * 40;
+      if (minutesWheelRef.current) minutesWheelRef.current.scrollTop = customMinutes * 40;
+    });
+  }, [showCustomTimePicker]);
+
+  useLayoutEffect(() => {
+    const track = durationTrackRef.current;
+    const segmentIndex = isReminder ? 0 : quickDurations.indexOf(durationMinutes) + 1;
+    const selectedSlot = segmentIndex >= 0 ? durationSlotRefs.current[segmentIndex] : null;
+    if (!track || !selectedSlot) {
+      setDurationIndicator(null);
+      return;
+    }
+
+    const updateIndicator = () => {
+      const trackRect = track.getBoundingClientRect();
+      const slotRect = selectedSlot.getBoundingClientRect();
+      const margin = 2;
+      setDurationIndicator({
+        left: slotRect.left - trackRect.left + margin,
+        width: Math.max(0, slotRect.width - margin * 2),
+      });
+    };
+
+    updateIndicator();
+    const observer = new ResizeObserver(updateIndicator);
+    observer.observe(track);
+    return () => observer.disconnect();
+  }, [durationMinutes, isReminder, isOpen, quickDurations]);
 
   if (!isOpen) return null;
 
   const activeTaskColor = uniformTaskColorEnabled ? uniformTaskColor : color;
   const endTime = isReminder ? startTime : calculateEndTime(startTime, durationMinutes);
+  const presetDurationIndex = quickDurations.indexOf(durationMinutes);
+
+  const handleOpenCustomTimePicker = () => {
+    setCustomHours(Math.floor(durationMinutes / 60));
+    setCustomMinutes(durationMinutes % 60);
+    setShowCustomTimePicker(true);
+  };
+
+  const handleApplyCustomDuration = () => {
+    const customDuration = customHours * 60 + customMinutes;
+    if (customDuration < 1) return;
+    setDurationMinutes(customDuration);
+    setIsReminder(false);
+    setShowCustomTimePicker(false);
+  };
 
   const handleToggleDay = (day: DayOfWeek) => {
     if (selectedDays.includes(day)) {
@@ -217,7 +280,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md bg-stone-100 dark:bg-zinc-900 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[94vh] flex flex-col"
         style={{ '--accent-color': accentColor } as React.CSSProperties}
@@ -508,42 +571,67 @@ export const TaskModal: React.FC<TaskModalProps> = ({
             <div className="py-2.5">
               <div className="flex items-center justify-between mb-1.5 text-slate-500 dark:text-zinc-400">
                 <span>Duration ({isReminder ? 'Reminder' : `${durationMinutes}m`})</span>
-                <span className="text-[10px]">Presets & Reminder:</span>
+                <span className="text-[10px]">Presets & reminder</span>
               </div>
-              <div className="flex flex-wrap items-center gap-1.5">
-                {quickDurations.map((mins) => (
+              <div className="flex items-center gap-1.5 rounded-2xl bg-stone-100 dark:bg-zinc-700/80 p-1">
+                <div
+                  ref={durationTrackRef}
+                  className="relative flex min-w-0 flex-1 items-stretch rounded-xl bg-black/[0.035] p-0.5 dark:bg-black/15"
+                >
+                  {durationIndicator && (
+                    <span
+                      aria-hidden="true"
+                      className="absolute inset-y-0.5 rounded-[10px] shadow-sm transition-[left,width] duration-200 ease-out"
+                      style={{
+                        left: durationIndicator.left,
+                        width: durationIndicator.width,
+                        backgroundColor: activeTaskColor,
+                      }}
+                    />
+                  )}
                   <button
-                    key={mins}
                     type="button"
+                    aria-label="Set as reminder"
+                    aria-pressed={isReminder}
+                    ref={(element) => { durationSlotRefs.current[0] = element; }}
                     onClick={() => {
-                      setDurationMinutes(mins);
-                      setIsReminder(false);
+                      setIsReminder(true);
+                      setDurationMinutes(0);
                     }}
-                    className={`py-1.5 px-3 rounded-xl font-medium transition-all ${
-                      !isReminder && durationMinutes === mins
-                        ? 'bg-[var(--accent-color)] text-white shadow-xs'
-                        : 'bg-stone-100 dark:bg-zinc-700 text-slate-700 dark:text-zinc-300 hover:bg-stone-200'
+                    className={`relative z-10 flex h-9 min-w-0 flex-1 items-center justify-center text-center rounded-[10px] transition-colors ${
+                      isReminder ? 'text-white' : 'text-slate-500 dark:text-zinc-300'
                     }`}
                   >
-                    {formatDuration(mins)}
+                    <Bell className="h-4 w-4" />
                   </button>
-                ))}
-
-                {/* Reminder option */}
+                  {quickDurations.map((mins, index) => {
+                    const isSelected = !isReminder && durationMinutes === mins;
+                    return (
+                      <button
+                        key={mins}
+                        type="button"
+                        aria-pressed={isSelected}
+                        ref={(element) => { durationSlotRefs.current[index + 1] = element; }}
+                        onClick={() => {
+                          setDurationMinutes(mins);
+                          setIsReminder(false);
+                        }}
+                        className={`relative z-10 flex h-9 min-w-0 flex-1 items-center justify-center whitespace-nowrap rounded-[10px] px-1.5 text-center text-[11px] font-semibold transition-colors ${
+                          isSelected ? 'text-white' : 'text-slate-600 dark:text-zinc-300'
+                        }`}
+                      >
+                        {formatDurationOption(mins)}
+                      </button>
+                    );
+                  })}
+                </div>
                 <button
                   type="button"
-                  onClick={() => {
-                    setIsReminder(true);
-                    setDurationMinutes(0);
-                  }}
-                  className={`py-1.5 px-3 rounded-xl font-semibold transition-all flex items-center gap-1 ${
-                    isReminder
-                      ? 'text-white shadow-xs'
-                      : 'bg-stone-100 dark:bg-zinc-700 hover:bg-stone-200'
-                  }`}
-                  style={isReminder ? { backgroundColor: activeTaskColor } : { color: activeTaskColor }}
+                  aria-label="Choose custom duration"
+                  onClick={handleOpenCustomTimePicker}
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-black/5 active:scale-95 dark:text-zinc-300 dark:hover:bg-white/10"
                 >
-                  <span>Reminder</span>
+                  <MoreHorizontal className="h-4.5 w-4.5" />
                 </button>
               </div>
             </div>
@@ -612,7 +700,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 })}
               </div>
               <p className="mt-2 text-[10px] text-slate-400 dark:text-zinc-500">
-                A push notification is scheduled for the next selected day only.
+                A reminder is scheduled for the next upcoming selected day at this start time.
               </p>
             </div>
           </div>
@@ -691,6 +779,106 @@ export const TaskModal: React.FC<TaskModalProps> = ({
           </div>
         </form>
       </div>
+      {showCustomTimePicker && (
+        <div
+          className="fixed inset-0 z-[1100] flex items-center justify-center bg-black/50 p-4 backdrop-blur-xs animate-in fade-in duration-150"
+          onClick={() => setShowCustomTimePicker(false)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="custom-duration-title"
+            className="w-full max-w-xs rounded-3xl bg-stone-100 p-5 shadow-2xl dark:bg-zinc-900"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <h2 id="custom-duration-title" className="text-center text-sm font-bold text-slate-800 dark:text-white">
+              Custom duration
+            </h2>
+            <div className="relative mt-4 grid grid-cols-2 gap-4">
+              <div className="pointer-events-none absolute inset-x-0 top-1/2 h-10 -translate-y-1/2 rounded-xl bg-stone-200/80 dark:bg-zinc-800" />
+              <div>
+                <span className="mb-1 block text-center text-[10px] font-semibold uppercase text-slate-400">Hours</span>
+                <div
+                  ref={hoursWheelRef}
+                  role="listbox"
+                  aria-label="Hours"
+                  className="relative h-40 snap-y snap-mandatory overflow-y-auto overscroll-contain py-[60px] text-center [scrollbar-width:none]"
+                  onScroll={(event) => setCustomHours(Math.min(23, Math.max(0, Math.round(event.currentTarget.scrollTop / 40))))}
+                >
+                  {Array.from({ length: 24 }, (_, hour) => (
+                    <button
+                      key={hour}
+                      type="button"
+                      role="option"
+                      aria-selected={customHours === hour}
+                      onClick={() => {
+                        setCustomHours(hour);
+                        if (hoursWheelRef.current) hoursWheelRef.current.scrollTo({ top: hour * 40, behavior: 'smooth' });
+                      }}
+                      className={`relative z-10 block h-10 w-full snap-center text-lg transition-all ${
+                        customHours === hour ? 'font-bold text-slate-900 dark:text-white' : 'text-slate-400 dark:text-zinc-500'
+                      }`}
+                    >
+                      {hour.toString().padStart(2, '0')}
+                    </button>
+                  ))}
+                </div>
+                <span className="mt-1 block text-center text-[10px] text-slate-400">hr</span>
+              </div>
+              <div>
+                <span className="mb-1 block text-center text-[10px] font-semibold uppercase text-slate-400">Minutes</span>
+                <div
+                  ref={minutesWheelRef}
+                  role="listbox"
+                  aria-label="Minutes"
+                  className="relative h-40 snap-y snap-mandatory overflow-y-auto overscroll-contain py-[60px] text-center [scrollbar-width:none]"
+                  onScroll={(event) => setCustomMinutes(Math.min(59, Math.max(0, Math.round(event.currentTarget.scrollTop / 40))))}
+                >
+                  {Array.from({ length: 60 }, (_, minute) => (
+                    <button
+                      key={minute}
+                      type="button"
+                      role="option"
+                      aria-selected={customMinutes === minute}
+                      onClick={() => {
+                        setCustomMinutes(minute);
+                        if (minutesWheelRef.current) minutesWheelRef.current.scrollTo({ top: minute * 40, behavior: 'smooth' });
+                      }}
+                      className={`relative z-10 block h-10 w-full snap-center text-lg transition-all ${
+                        customMinutes === minute ? 'font-bold text-slate-900 dark:text-white' : 'text-slate-400 dark:text-zinc-500'
+                      }`}
+                    >
+                      {minute.toString().padStart(2, '0')}
+                    </button>
+                  ))}
+                </div>
+                <span className="mt-1 block text-center text-[10px] text-slate-400">min</span>
+              </div>
+            </div>
+            {customHours === 0 && customMinutes === 0 && (
+              <p className="mt-3 text-center text-xs text-rose-500">Duration must be at least one minute.</p>
+            )}
+            <div className="mt-5 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setShowCustomTimePicker(false)}
+                className="flex-1 rounded-xl bg-stone-200 py-2.5 text-xs font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyCustomDuration}
+                disabled={customHours === 0 && customMinutes === 0}
+                className="flex-1 rounded-xl py-2.5 text-xs font-semibold text-white transition-opacity disabled:cursor-not-allowed disabled:opacity-40"
+                style={{ backgroundColor: accentColor }}
+              >
+                Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

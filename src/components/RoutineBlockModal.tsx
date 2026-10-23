@@ -96,7 +96,7 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
   const dayTasks = allTasks.filter((t) => t.days.some((d) => selectedDays.includes(d)));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md bg-stone-100 dark:bg-zinc-900 rounded-t-[32px] sm:rounded-[32px] shadow-2xl overflow-hidden max-h-[92vh] flex flex-col"
         style={{ '--accent-color': accentColor } as React.CSSProperties}

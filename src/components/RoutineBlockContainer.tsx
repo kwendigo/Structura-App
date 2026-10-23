@@ -174,7 +174,7 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
           <span className="text-[11px] font-bold tracking-wider uppercase">
             {block.name}
           </span>
-          <span className="text-[10px] opacity-75 font-medium lowercase">
+          <span className="whitespace-nowrap text-[10px] opacity-75 font-medium lowercase">
             · {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
           </span>
           {block.days && block.days.length > 1 && (

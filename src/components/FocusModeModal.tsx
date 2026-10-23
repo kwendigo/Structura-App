@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   Check,
@@ -22,7 +22,6 @@ import {
   parseTimeToMinutes,
   calculatePomodoroPlan,
 } from '../utils/scheduleLogic';
-import { sendDeviceNotification, requestNotificationPermission } from '../utils/notifications';
 
 interface FocusModeModalProps {
   isOpen: boolean;
@@ -45,7 +44,6 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
   const [focusMode, setFocusMode] = useState<'standard' | 'pomodoro'>('standard');
   const [breakMinutes, setBreakMinutes] = useState<number>(5);
   const [activeTab, setActiveTab] = useState<'intervals' | 'subtasks' | 'notes'>('intervals');
-  const [pomodoroNotificationsActive, setPomodoroNotificationsActive] = useState<boolean>(false);
   const [confirmModal, setConfirmModal] = useState<'to_pomodoro' | 'to_standard' | null>(null);
 
   const [nowSec, setNowSec] = useState<number>(() => {
@@ -56,7 +54,6 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
   useEffect(() => {
     if (!isOpen) return;
     setFocusMode('standard');
-    setPomodoroNotificationsActive(false);
     setConfirmModal(null);
 
     const initialDate = new Date();
@@ -76,38 +73,10 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
     return calculatePomodoroPlan(task.startTime, task.durationMinutes, breakMinutes);
   }, [task, breakMinutes]);
 
-  const prevNowSecRef = useRef<number | null>(null);
-  useEffect(() => {
-    const prevSec = prevNowSecRef.current;
-    prevNowSecRef.current = isOpen ? nowSec : null;
-    if (!isOpen || focusMode !== 'pomodoro' || !pomodoroNotificationsActive || prevSec === null || nowSec <= prevSec || !task) return;
-
-    const finished = pomodoroIntervals.find((inv) => {
-      const endSec = inv.endMinutes * 60;
-      return prevSec < endSec && nowSec >= endSec;
-    });
-    if (!finished) return;
-
-    if (finished.type === 'work') {
-      sendDeviceNotification(
-        task.title,
-        `Your ${finished.durationMinutes} work session is over, time for a break!`,
-        `pomo-work-${task.id}-${finished.id}`
-      );
-    } else {
-      sendDeviceNotification(
-        task.title,
-        `Your ${finished.durationMinutes} break is over, work starts now!`,
-        `pomo-break-${task.id}-${finished.id}`
-      );
-    }
-  }, [nowSec, isOpen, focusMode, pomodoroNotificationsActive, pomodoroIntervals, task]);
-
   if (!isOpen || !task) return null;
 
   const taskStartSec = parseTimeToMinutes(task.startTime) * 60;
-  const taskTotalSec = task.durationMinutes * 60;
-  const taskEndSec = taskStartSec + taskTotalSec;
+  const taskEndSec = taskStartSec + task.durationMinutes * 60;
 
   const taskRemainingSec = Math.max(0, taskEndSec - nowSec);
 
@@ -118,6 +87,9 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
 
   const intervalRemainingSec = activePomodoroInterval
     ? Math.max(0, activePomodoroInterval.endMinutes * 60 - nowSec)
+    : 0;
+  const activeIntervalDurationSec = activePomodoroInterval
+    ? (activePomodoroInterval.endMinutes - activePomodoroInterval.startMinutes) * 60
     : 0;
 
   const formatSecondsCountdown = (totalSec: number) => {
@@ -131,14 +103,16 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
     return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const elapsedSec = Math.max(0, Math.min(taskTotalSec, nowSec - taskStartSec));
-  const progressPercent = taskTotalSec > 0
-    ? Math.min(100, Math.max(0, (elapsedSec / taskTotalSec) * 100))
-    : 100;
-
   const endTimeStr = calculateEndTime(task.startTime, task.durationMinutes);
   const isUnderHour = task.durationMinutes < 60;
   const isPomodoroAvailable = task.durationMinutes >= 15;
+  const focusProgressPercent = focusMode === 'pomodoro' && activePomodoroInterval
+    ? activeIntervalDurationSec > 0
+      ? Math.min(100, Math.max(0, ((activeIntervalDurationSec - intervalRemainingSec) / activeIntervalDurationSec) * 100))
+      : 0
+    : task.durationMinutes > 0
+      ? Math.min(100, Math.max(0, ((task.durationMinutes * 60 - taskRemainingSec) / (task.durationMinutes * 60)) * 100))
+      : 0;
 
   const handleTabClick = (mode: 'standard' | 'pomodoro') => {
     if (mode === 'pomodoro' && !isPomodoroAvailable) return;
@@ -150,7 +124,7 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 bg-stone-900/60 backdrop-blur-md animate-in fade-in duration-200">
+    <div className="fixed inset-0 z-[1000] flex items-center justify-center p-0 sm:p-4 bg-stone-900/60 backdrop-blur-md animate-in fade-in duration-200">
       <div
         className="w-full sm:max-w-md h-full sm:h-auto sm:max-h-[94vh] bg-gradient-to-b from-stone-100 via-stone-50 to-stone-100 dark:from-zinc-900 dark:via-zinc-900/90 dark:to-zinc-950 rounded-none sm:rounded-[36px] shadow-2xl overflow-y-auto flex flex-col justify-between p-5 sm:p-6 relative border border-white/20 select-none"
         onClick={(e) => e.stopPropagation()}
@@ -192,7 +166,7 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
               } ${!isPomodoroAvailable ? 'opacity-40 cursor-not-allowed hover:text-slate-500' : ''}`}
             >
               <Timer className="w-3 h-3 text-rose-500" />
-              <span>Pomodoro {pomodoroNotificationsActive ? '🔔' : ''}</span>
+              <span>Pomodoro</span>
             </button>
           </div>
         </div>
@@ -217,29 +191,15 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
 
         <div className="flex-1 flex flex-col items-center justify-center py-4">
           <div className="relative w-28 h-52 rounded-[56px] ring-4 ring-white/80 dark:ring-white/10 shadow-2xl overflow-hidden flex flex-col items-center justify-center bg-stone-200/70 dark:bg-zinc-800/80">
-            {/* Top-to-bottom fill with subtle gradient */}
             <div
-              className="absolute top-0 left-0 w-full transition-[height] duration-1000 ease-linear"
+              className="absolute top-0 left-0 w-full transition-[height] duration-1000 ease-linear pointer-events-none"
               style={{
-                height: `${progressPercent}%`,
-                background: `linear-gradient(180deg, ${task.color}88 0%, ${task.color} 100%)`,
-                opacity: 0.95,
+                height: `${focusProgressPercent}%`,
+                background: `linear-gradient(180deg, ${task.color}aa 0%, ${task.color} 100%)`,
               }}
             />
-
-            <div
-              className="absolute inset-0 pointer-events-none rounded-[56px]"
-              style={{
-                boxShadow: `inset 0 0 24px ${task.color}50`,
-              }}
-            />
-
             <div className="relative z-10 w-16 h-16 rounded-full flex items-center justify-center text-white drop-shadow-md">
               <IconRenderer name={task.icon} className="w-10 h-10 stroke-[2.2]" />
-            </div>
-
-            <div className="absolute bottom-3 z-10 text-[10px] font-bold text-slate-600 dark:text-zinc-300 bg-white/80 dark:bg-black/60 px-2 py-0.5 rounded-full shadow-2xs">
-              {Math.round(progressPercent)}% elapsed
             </div>
           </div>
 
@@ -455,8 +415,8 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
               </h4>
               <p className="text-xs text-slate-500 dark:text-zinc-400">
                 {confirmModal === 'to_pomodoro'
-                  ? 'This will enable interval work and break notifications for this task.'
-                  : 'Choosing YES will turn off notifications for this task specifically.'}
+                  ? 'This will organize the task into work and break intervals.'
+                  : 'Choosing YES will return to standard task focus.'}
               </p>
 
               <div className="flex items-center gap-2 pt-1">
@@ -464,13 +424,9 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
                   type="button"
                   onClick={() => {
                     if (confirmModal === 'to_pomodoro') {
-                      requestNotificationPermission();
                       setFocusMode('pomodoro');
-                      setPomodoroNotificationsActive(true);
                     } else {
-                      // Choosing YES turns off notifications for this task specifically and returns to normal focus
                       setFocusMode('standard');
-                      setPomodoroNotificationsActive(false);
                     }
                     setConfirmModal(null);
                   }}
@@ -481,9 +437,6 @@ export const FocusModeModal: React.FC<FocusModeModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    if (confirmModal === 'to_standard') {
-                      // Choosing NO keeps pomodoro active
-                    }
                     setConfirmModal(null);
                   }}
                   className="flex-1 py-2.5 bg-slate-200 dark:bg-zinc-800 text-slate-800 dark:text-zinc-200 rounded-2xl text-xs font-semibold active:scale-95 transition-all"

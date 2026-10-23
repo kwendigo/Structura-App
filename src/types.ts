@@ -85,5 +85,7 @@ export interface AppSettings {
   reminderMinutesBefore?: number;
   soundEnabled?: boolean;
   iCloudSyncEnabled?: boolean;
+  cloudSyncKey?: string;
+  cloudSyncLastBackupAt?: string;
   widgetType?: 'next_up' | 'timeline' | 'both';
 }

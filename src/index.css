@@ -38,15 +38,61 @@ select {
   [class*="text-9xl"],
   [class*="text-["][class*="px"]
 ):not(.timeline-timestamp):not(.timeline-timestamp-end):not(input):not(textarea):not(select) {
-  font-size: calc(1em * 1.1);
+  font-size: calc(1em * 0.9);
+  line-height: 1.2;
+}
+
+#root [class*="font-black"],
+#root [class*="font-extrabold"],
+#root [class*="font-bold"] {
+  font-weight: 600;
+}
+
+#root [class*="font-semibold"] {
+  font-weight: 500;
+}
+
+#root [class*="font-medium"] {
+  font-weight: 400;
 }
 
 .timeline-timestamp {
-  font-size: 12px;
+  font-size: 9px !important;
 }
 
 .timeline-timestamp-end {
-  font-size: 11px;
+  font-size: 8px !important;
+}
+
+.timeline-hour-marker {
+  font-size: 8px !important;
+  font-variant-numeric: tabular-nums;
+  color: #64748b;
+}
+
+.dark .timeline-hour-marker {
+  color: #a1a1aa;
+}
+
+.timeline-current-time {
+  font-size: 10px !important;
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-task-title {
+  font-size: 15px !important;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.timeline-task-metadata {
+  font-size: 11px !important;
+  font-weight: 400;
+  color: #94a3b8;
+}
+
+.dark .timeline-task-metadata {
+  color: #71717a;
 }
 
 .app-signature-title {

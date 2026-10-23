@@ -85,24 +85,21 @@ export async function getOneSignalSubscriptionId(): Promise<string> {
   return subscription.id;
 }
 
-const DAY_ORDER: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
-
-export function getNextTargetWeekday(task: Pick<Task, 'days' | 'startTime'>): DayOfWeek {
+export function getNextScheduledAt(task: Pick<Task, 'days' | 'startTime'>): string {
   if (task.days.length === 0) throw new Error('Select at least one day for this task.');
 
   const now = new Date();
-  const startMinutes = Number(task.startTime.slice(0, 2)) * 60 + Number(task.startTime.slice(3, 5));
-  const nowMinutes = now.getHours() * 60 + now.getMinutes();
-  const candidates = task.days.map((day) => {
-    const dayOffset = (DAY_ORDER.indexOf(day) - now.getDay() + 7) % 7;
-    return {
-      day,
-      daysUntil: dayOffset === 0 && startMinutes <= nowMinutes ? 7 : dayOffset,
-    };
-  });
+  const weekdays: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+  const [hours, minutes] = task.startTime.split(':').map(Number);
 
-  candidates.sort((a, b) => a.daysUntil - b.daysUntil);
-  return candidates[0].day;
+  for (let offset = 0; offset <= 7; offset += 1) {
+    const candidate = new Date(now);
+    candidate.setDate(now.getDate() + offset);
+    if (!task.days.includes(weekdays[candidate.getDay()])) continue;
+    candidate.setHours(hours, minutes, 0, 0);
+    if (candidate.getTime() > now.getTime()) return candidate.toISOString();
+  }
+  throw new Error('Could not determine the next scheduled task time.');
 }
 
 export interface ScheduleNotificationResult {
@@ -111,8 +108,8 @@ export interface ScheduleNotificationResult {
 }
 
 export async function scheduleTaskNotification(
-  task: Pick<Task, 'title' | 'startTime' | 'days' | 'isReminder'>,
-  targetedWeekday: DayOfWeek,
+  task: Pick<Task, 'title' | 'startTime' | 'isReminder'>,
+  scheduledAt: string,
   subscriptionId: string,
   apiSecret: string,
   previousNotificationId?: string
@@ -128,10 +125,13 @@ export async function scheduleTaskNotification(
       'X-Scheduler-Secret': apiSecret,
     },
     body: JSON.stringify({
-      task,
-      targetedWeekday,
+      task: {
+        title: task.title,
+        startTime: task.startTime,
+        isReminder: task.isReminder,
+      },
+      scheduledAt,
       subscriptionId,
-      timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
       previousNotificationId,
     }),
   });
@@ -163,42 +163,5 @@ export async function cancelTaskNotification(notificationId: string, apiSecret: 
   const result = await response.json().catch(() => ({}));
   if (!response.ok) {
     throw new Error(result.error || `Notification cancellation failed (${response.status}).`);
-  }
-}
-
-export function notificationsSupported(): boolean {
-  return typeof window !== 'undefined' && 'Notification' in window;
-}
-
-export async function requestNotificationPermission(): Promise<NotificationPermission | 'unsupported'> {
-  if (!notificationsSupported()) return 'unsupported';
-  if (Notification.permission !== 'default') return Notification.permission;
-  try {
-    return await Notification.requestPermission();
-  } catch {
-    return Notification.permission;
-  }
-}
-
-export async function sendDeviceNotification(title: string, body?: string, tag?: string): Promise<void> {
-  if (!notificationsSupported() || Notification.permission !== 'granted') return;
-
-  const options: NotificationOptions = { body, tag };
-  try {
-    const registration = 'serviceWorker' in navigator
-      ? await navigator.serviceWorker.getRegistration()
-      : undefined;
-    if (registration) {
-      await registration.showNotification(title, options);
-      return;
-    }
-  } catch {
-    // Focus notifications can fall back to the active page.
-  }
-
-  try {
-    new Notification(title, options);
-  } catch {
-    // Some mobile browsers only allow notifications through a service worker.
   }
 }
