@@ -16,8 +16,12 @@ import { getWeekDays } from '../utils/scheduleLogic';
 interface HeaderProps {
   currentDay: DayOfWeek;
   currentDate: Date;
+  weekSwipeOffset: number;
+  weekSwipeAnimating: boolean;
   onSelectDay: (day: DayOfWeek) => void;
   onSelectDate: (date: Date) => void;
+  onWeekSwipeOffset: (offset: number) => void;
+  onWeekSwipe: (direction: -1 | 1, width: number) => void;
   onOpenSettings: () => void;
   onOpenCalendar: () => void;
   onCopyWholeDay: (sourceDay: DayOfWeek) => void;
@@ -31,8 +35,12 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({
   currentDay,
   currentDate,
+  weekSwipeOffset,
+  weekSwipeAnimating,
   onSelectDay,
   onSelectDate,
+  onWeekSwipeOffset,
+  onWeekSwipe,
   onOpenSettings,
   onOpenCalendar,
   onCopyWholeDay,
@@ -44,7 +52,13 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [dayMenuDay, setDayMenuDay] = useState<DayOfWeek | null>(null);
   const longPressTimeout = useRef<NodeJS.Timeout | null>(null);
-  const weekTouchStart = useRef<{ x: number; y: number } | null>(null);
+  const weekPointerStart = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    width: number;
+    dragging: boolean;
+  } | null>(null);
   const ignoreDayClick = useRef(false);
 
   const weekDays = getWeekDays(currentDate);
@@ -64,31 +78,59 @@ export const Header: React.FC<HeaderProps> = ({
     onSelectDate(nextDate);
   };
 
-  const handleWeekTouchStart = (event: React.TouchEvent<HTMLDivElement>) => {
-    if (event.touches.length !== 1) {
-      weekTouchStart.current = null;
-      return;
-    }
-    weekTouchStart.current = {
-      x: event.touches[0].clientX,
-      y: event.touches[0].clientY,
+  const handleWeekPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!event.isPrimary || event.button !== 0 || weekSwipeAnimating) return;
+    const target = event.target instanceof Element
+      ? event.target.closest<HTMLButtonElement>('[data-weekday-button]')
+      : null;
+    if (!target) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    weekPointerStart.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+      width: bounds.width,
+      dragging: false,
     };
+    target.setPointerCapture(event.pointerId);
   };
 
-  const handleWeekTouchEnd = (event: React.TouchEvent<HTMLDivElement>) => {
-    const start = weekTouchStart.current;
-    weekTouchStart.current = null;
-    if (!start || event.changedTouches.length !== 1) return;
+  const handleWeekPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    const start = weekPointerStart.current;
+    if (!start || event.pointerId !== start.pointerId) return;
+    const deltaX = event.clientX - start.x;
+    const deltaY = event.clientY - start.y;
+    if (!start.dragging && Math.abs(deltaX) < 5 && Math.abs(deltaY) < 5) return;
+    if (!start.dragging && Math.abs(deltaY) >= Math.abs(deltaX)) {
+      weekPointerStart.current = null;
+      return;
+    }
+    start.dragging = true;
+    if (longPressTimeout.current) {
+      clearTimeout(longPressTimeout.current);
+      longPressTimeout.current = null;
+    }
+    event.preventDefault();
+    onWeekSwipeOffset(deltaX);
+  };
 
-    const deltaX = event.changedTouches[0].clientX - start.x;
-    const deltaY = event.changedTouches[0].clientY - start.y;
-    if (Math.abs(deltaX) < 40 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+  const finishWeekPointer = (event: React.PointerEvent<HTMLDivElement>, cancelled = false) => {
+    const start = weekPointerStart.current;
+    if (!start || event.pointerId !== start.pointerId) return;
+    weekPointerStart.current = null;
+    if (!start.dragging) return;
 
-    ignoreDayClick.current = true;
-    window.setTimeout(() => {
-      ignoreDayClick.current = false;
-    }, 300);
-    handleShiftWeek(deltaX < 0 ? 7 : -7);
+    const deltaX = event.clientX - start.x;
+    const threshold = Math.max(40, start.width * 0.18);
+    if (!cancelled && Math.abs(deltaX) >= threshold) {
+      ignoreDayClick.current = true;
+      window.setTimeout(() => {
+        ignoreDayClick.current = false;
+      }, 300);
+      onWeekSwipe(deltaX < 0 ? -1 : 1, start.width);
+      return;
+    }
+    onWeekSwipeOffset(0);
   };
 
   const handleDayTouchStart = (day: DayOfWeek) => {
@@ -108,7 +150,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <header className="sticky top-0 z-10 bg-white/95 dark:bg-zinc-950/95 backdrop-blur-md pt-2 pb-1 px-3 select-none">
-      <div className="flex items-center justify-between mb-1">
+      <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           <button
             type="button"
@@ -176,12 +218,14 @@ export const Header: React.FC<HeaderProps> = ({
       </div>
 
       <div
-        className="mx-2 grid grid-cols-7 gap-0 text-center py-0 touch-pan-y"
-        onTouchStart={handleWeekTouchStart}
-        onTouchEnd={handleWeekTouchEnd}
-        onTouchCancel={() => {
-          weekTouchStart.current = null;
-        }}
+        className={`mx-2 grid grid-cols-7 gap-0 text-center py-0 touch-pan-y ${
+          weekSwipeAnimating ? 'pointer-events-none transition-transform duration-200 ease-out' : ''
+        }`}
+        style={{ transform: `translateX(${weekSwipeOffset}px)` }}
+        onPointerDown={handleWeekPointerDown}
+        onPointerMove={handleWeekPointerMove}
+        onPointerUp={(event) => finishWeekPointer(event)}
+        onPointerCancel={(event) => finishWeekPointer(event, true)}
       >
         {weekDays.map(({ key, short, dayNumber, date }) => {
           const isSelected = currentDay === key;
@@ -192,8 +236,9 @@ export const Header: React.FC<HeaderProps> = ({
             <div className="relative flex flex-col items-center">
               <button
                 type="button"
+                data-weekday-button
                 onClick={() => {
-                  if (ignoreDayClick.current) {
+                  if (ignoreDayClick.current || weekSwipeAnimating) {
                     ignoreDayClick.current = false;
                     return;
                   }

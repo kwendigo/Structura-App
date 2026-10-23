@@ -216,19 +216,22 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                   onClick={() => setActiveSection('customisation')}
                   className="w-full px-4 py-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-zinc-700/40 transition-colors text-left"
                 >
-                  <div className="flex items-center gap-3">
+                  <div className="flex min-w-0 items-center gap-3">
                     <div
                       className="w-8 h-8 rounded-xl flex items-center justify-center shadow-xs"
                       style={{ backgroundColor: `${currentAccent}20`, color: currentAccent }}
                     >
                       <Palette className="w-4 h-4" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <span className="text-xs font-semibold text-slate-800 dark:text-zinc-100 block">Customisation & Presets</span>
-                      <span className="text-[11px] text-slate-400 dark:text-zinc-500">Theme color, Duration presets, Uniform task colors</span>
+                      <span className="text-[11px] text-slate-400 dark:text-zinc-500">
+                        Theme color, Duration presets,
+                        <span className="block">Uniform task colors</span>
+                      </span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-1.5 text-slate-400">
+                  <div className="flex shrink-0 items-center gap-1.5 self-center text-slate-400">
                     <div
                       className="w-3.5 h-3.5 rounded-full ring-2 ring-white dark:ring-zinc-800 shadow-2xs"
                       style={{ backgroundColor: currentAccent }}
@@ -251,8 +254,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                       <span className="text-[11px] text-slate-400 dark:text-zinc-500">Year-long task library & suggestions</span>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-zinc-700 text-slate-600 dark:text-zinc-300">
+                  <div className="flex shrink-0 items-center gap-2">
+                    <span className="inline-flex shrink-0 items-center justify-center whitespace-nowrap rounded-full bg-slate-100 px-1.5 py-0.5 text-[9px] font-bold leading-none text-slate-600 dark:bg-zinc-700 dark:text-zinc-300">
                       {recordedList.length} tasks
                     </span>
                     <ChevronRight className="w-4 h-4 text-slate-400" />

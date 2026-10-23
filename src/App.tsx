@@ -74,6 +74,9 @@ export default function App() {
   const [cloudSyncError, setCloudSyncError] = useState<string | null>(null);
   const [cloudSyncReadyKey, setCloudSyncReadyKey] = useState<string | null>(null);
   const [selectedDay, setSelectedDay] = useState<DayOfWeek>('wed');
+  const [weekSwipeOffset, setWeekSwipeOffset] = useState(0);
+  const [weekSwipeAnimating, setWeekSwipeAnimating] = useState(false);
+  const weekSwipeTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [nowMinutes, setNowMinutes] = useState<number>(() => {
     const d = new Date();
     return d.getHours() * 60 + d.getMinutes();
@@ -87,6 +90,10 @@ export default function App() {
     const jsDay = currentDate.getDay();
     const dayKeyMap: DayOfWeek[] = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
     setSelectedDay(dayKeyMap[jsDay]);
+  }, []);
+
+  useEffect(() => () => {
+    if (weekSwipeTimeout.current) clearTimeout(weekSwipeTimeout.current);
   }, []);
 
   const [isTaskPickerOpen, setIsTaskPickerOpen] = useState(false);
@@ -316,6 +323,22 @@ export default function App() {
       );
       showToast(`Removed "${task.title}" from block`);
     }
+  };
+
+  const handleWeekSwipe = (direction: -1 | 1, width: number) => {
+    if (weekSwipeTimeout.current) clearTimeout(weekSwipeTimeout.current);
+    setWeekSwipeAnimating(true);
+    setWeekSwipeOffset(direction * width);
+    weekSwipeTimeout.current = setTimeout(() => {
+      setCurrentDate((previous) => {
+        const nextDate = new Date(previous);
+        nextDate.setDate(previous.getDate() + (direction === -1 ? 7 : -7));
+        return nextDate;
+      });
+      setWeekSwipeOffset(0);
+      setWeekSwipeAnimating(false);
+      weekSwipeTimeout.current = null;
+    }, 200);
   };
 
   const handleToggleComplete = (taskId: string) => {
@@ -734,7 +757,11 @@ export default function App() {
         <Header
           currentDay={selectedDay}
           currentDate={currentDate}
+          weekSwipeOffset={weekSwipeOffset}
+          weekSwipeAnimating={weekSwipeAnimating}
           onSelectDay={(day) => setSelectedDay(day)}
+          onWeekSwipeOffset={setWeekSwipeOffset}
+          onWeekSwipe={handleWeekSwipe}
           onSelectDate={(newDate) => {
             setCurrentDate(newDate);
             const jsDay = newDate.getDay();
@@ -755,7 +782,12 @@ export default function App() {
           }
         />
 
-        <main className="min-h-0 flex-1 overflow-y-auto px-1 py-3 pb-32 overscroll-none">
+        <main
+          className={`min-h-0 flex-1 overflow-x-hidden overflow-y-auto px-1 py-3 pb-32 overscroll-none ${
+            weekSwipeAnimating ? 'transition-transform duration-200 ease-out' : ''
+          }`}
+          style={{ transform: `translateX(${weekSwipeOffset}px)` }}
+        >
           {renderTimeline()}
 
           <div className="mt-6 mb-8 px-4 flex flex-col items-center select-none">
