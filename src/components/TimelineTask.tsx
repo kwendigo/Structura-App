@@ -293,7 +293,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
             event.dataTransfer.setData('text/plain', task.id);
             event.dataTransfer.effectAllowed = 'move';
           }}
-          className={`relative w-14 min-h-14 rounded-full flex items-center justify-center overflow-visible transition-all shadow-xs flex-shrink-0 p-3 ${
+          className={`relative w-12 min-h-14 rounded-full flex items-center justify-center overflow-visible transition-all shadow-xs flex-shrink-0 p-3 ${
             isActive ? 'bg-slate-100 dark:bg-zinc-800' : ''
           } ${
             isOverlappingPrev
