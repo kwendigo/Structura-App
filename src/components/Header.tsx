@@ -268,7 +268,7 @@ export const Header: React.FC<HeaderProps> = ({
                   const isCurrentDay = isToday(date);
 
                   return (
-                    <div key={date.toISOString()} className="relative flex flex-col items-center">
+                    <div key={date.toISOString()} className="relative flex flex-col items-center overflow-visible">
                       <button
                         type="button"
                         data-weekday-button
@@ -304,7 +304,7 @@ export const Header: React.FC<HeaderProps> = ({
                               : isCurrentDay
                                 ? 'bg-slate-200 dark:bg-zinc-700 text-slate-900 dark:text-white font-bold'
                                 : 'text-slate-800 dark:text-zinc-300 font-semibold group-hover:bg-slate-100 dark:group-hover:bg-zinc-800'
-                          } ${isSelected && isCurrentDay ? 'ring-2 ring-offset-2 ring-slate-300 dark:ring-zinc-600 ring-offset-white dark:ring-offset-zinc-950' : ''}`}
+                          } ${isSelected && isCurrentDay ? 'border-2 border-slate-300 dark:border-zinc-600' : ''}`}
                           style={{ backgroundColor: isSelected ? accentColor : undefined }}
                         >
                           {dayNumber}
