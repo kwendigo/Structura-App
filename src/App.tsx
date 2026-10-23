@@ -113,7 +113,7 @@ export default function App() {
   const [modalInitialTemplate, setModalInitialTemplate] = useState<TaskTemplate | null>(null);
   const [modalInitialTime, setModalInitialTime] = useState<string | undefined>();
   const [modalInitialDuration, setModalInitialDuration] = useState<number | undefined>();
-  const [modalInitialBlockId, setModalInitialBlockId] = useState<string | null>(null);
+  const [pendingBlockRemoval, setPendingBlockRemoval] = useState<{ taskId: string; startTime: string } | null>(null);
 
   const [clipboardDay, setClipboardDay] = useState<DayOfWeek | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -265,6 +265,23 @@ export default function App() {
     return filterBlocksForDay(blocks, selectedDay);
   }, [blocks, selectedDay]);
 
+  const getRoutineBlockBounds = (block: RoutineBlock) => {
+    const blockTasks = sortTasksByTime(tasks.filter(
+      (task) => task.blockId === block.id && task.days.includes(selectedDay)
+    ));
+    const startMinutes = parseTimeToMinutes(block.startTime || blockTasks[0]?.startTime || '09:00');
+    const inferredDuration = Math.max(
+      60,
+      ...blockTasks.map((task) =>
+        parseTimeToMinutes(task.startTime) + (task.isReminder ? 0 : task.durationMinutes) - startMinutes
+      )
+    );
+    return {
+      startMinutes,
+      endMinutes: startMinutes + (block.durationMinutes || inferredDuration),
+    };
+  };
+
   const timelineItems = useMemo(() => {
     return buildTimelineWithGaps(currentDayTasks, 15);
   }, [currentDayTasks]);
@@ -292,17 +309,83 @@ export default function App() {
   };
 
   const handleUpdateTaskTime = (taskId: string, newStartTime: string) => {
-    executeTaskMove(taskId, newStartTime);
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task) return;
+
+    const newStartMinutes = parseTimeToMinutes(newStartTime);
+    const taskEndMinutes = newStartMinutes + (task.isReminder ? 0 : task.durationMinutes);
+    const destinationBlock = currentDayBlocks.find((block) => {
+      const { startMinutes, endMinutes } = getRoutineBlockBounds(block);
+      return task.isReminder
+        ? newStartMinutes >= startMinutes && newStartMinutes <= endMinutes
+        : newStartMinutes >= startMinutes && taskEndMinutes <= endMinutes;
+    });
+
+    if (task.blockId && !destinationBlock) {
+      const parentBlock = currentDayBlocks.find((block) => block.id === task.blockId);
+      if (parentBlock) {
+        const { startMinutes, endMinutes } = getRoutineBlockBounds(parentBlock);
+        const completelyOutside = task.isReminder
+          ? newStartMinutes < startMinutes || newStartMinutes > endMinutes
+          : taskEndMinutes <= startMinutes || newStartMinutes >= endMinutes;
+        if (completelyOutside) {
+          setPendingBlockRemoval({ taskId, startTime: newStartTime });
+          return;
+        }
+        executeTaskMove(taskId, newStartTime, parentBlock.id);
+        return;
+      }
+    }
+
+    executeTaskMove(taskId, newStartTime, destinationBlock?.id || null);
+  };
+
+  const handleAssignTaskToBlock = (taskId: string, blockId: string) => {
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    const block = currentDayBlocks.find((candidate) => candidate.id === blockId);
+    if (!task || !block || !task.days.includes(selectedDay)) return;
+    const { startMinutes, endMinutes } = getRoutineBlockBounds(block);
+    const taskDuration = task.isReminder ? 0 : task.durationMinutes;
+    if (taskDuration > endMinutes - startMinutes) {
+      showToast(`"${task.title}" is longer than this routine block`);
+      return;
+    }
+    const maxStart = endMinutes - taskDuration;
+    const clampedStart = Math.max(startMinutes, Math.min(maxStart, parseTimeToMinutes(task.startTime)));
+    const snappedStart = Math.max(
+      startMinutes,
+      Math.min(maxStart, Math.round(clampedStart / 10) * 10)
+    );
+    setTasks((previous) =>
+      previous.map((candidate) =>
+        candidate.id === taskId
+          ? { ...candidate, startTime: minutesToTimeString(snappedStart, true), blockId }
+          : candidate
+      )
+    );
+    showToast(`Added "${task.title}" to routine block`);
   };
 
   const handleMoveBlock = (blockId: string, deltaMinutes: number) => {
     if (deltaMinutes === 0) return;
+    const block = currentDayBlocks.find((candidate) => candidate.id === blockId);
+    if (block) {
+      const { startMinutes } = getRoutineBlockBounds(block);
+      const maxStart = 1440 - (block.durationMinutes || 60);
+      const newBlockStart = Math.max(0, Math.min(maxStart, startMinutes + deltaMinutes));
+      const snappedBlockStart = Math.max(0, Math.min(maxStart, Math.round(newBlockStart / 10) * 10));
+      setBlocks((previous) =>
+        previous.map((candidate) => candidate.id === blockId
+          ? { ...candidate, startTime: minutesToTimeString(snappedBlockStart, true) }
+          : candidate)
+      );
+    }
     setTasks((prev) =>
       prev.map((t) => {
         if (t.blockId === blockId && t.days.includes(selectedDay)) {
           const currentM = parseTimeToMinutes(t.startTime);
           const newM = Math.max(0, Math.min(1440 - t.durationMinutes, currentM + deltaMinutes));
-          const snappedM = Math.round(newM / 5) * 5;
+          const snappedM = Math.round(newM / 10) * 10;
           return {
             ...t,
             startTime: minutesToTimeString(snappedM, true),
@@ -319,11 +402,8 @@ export default function App() {
     const taskId = e.dataTransfer.getData('text/plain');
     if (!taskId) return;
     const task = tasks.find((t) => t.id === taskId);
-    if (task && task.blockId !== null) {
-      setTasks((prev) =>
-        prev.map((t) => (t.id === taskId ? { ...t, blockId: null } : t))
-      );
-      showToast(`Removed "${task.title}" from block`);
+    if (task?.blockId) {
+      setPendingBlockRemoval({ taskId, startTime: task.startTime });
     }
   };
 
@@ -491,8 +571,7 @@ export default function App() {
     showToast(`Copied "${task.title}"`);
   };
 
-  const handleSaveBlock = (blockData: Omit<RoutineBlock, 'id'>, existingId?: string, assignedTaskIds?: string[]) => {
-    let blockId = existingId;
+  const handleSaveBlock = (blockData: Omit<RoutineBlock, 'id'>, existingId?: string) => {
     if (existingId) {
       setBlocks((prev) =>
         prev.map((b) => (b.id === existingId ? { ...b, ...blockData, id: existingId } : b))
@@ -503,19 +582,10 @@ export default function App() {
         ...blockData,
         id: `block-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
       };
-      blockId = newBlock.id;
       setBlocks((prev) => [...prev, newBlock]);
       showToast(`Created block "${blockData.name}"`);
     }
 
-    if (assignedTaskIds && blockId) {
-      setTasks((prev) =>
-        prev.map((t) => ({
-          ...t,
-          blockId: assignedTaskIds.includes(t.id) ? blockId : t.blockId === blockId ? null : t.blockId,
-        }))
-      );
-    }
   };
 
   const handleDeleteBlock = (blockId: string) => {
@@ -551,7 +621,6 @@ export default function App() {
     setModalInitialTemplate(null);
     setModalInitialTime(startTime);
     setModalInitialDuration(duration);
-    setModalInitialBlockId(null);
     setIsTaskModalOpen(true);
   };
 
@@ -572,7 +641,7 @@ export default function App() {
   };
 
   const renderTimeline = () => {
-    if (timelineItems.length === 0) {
+    if (timelineItems.length === 0 && currentDayBlocks.length === 0) {
       return (
         <div className="py-12 px-6 text-center select-none">
           <div className="w-12 h-12 mx-auto mb-2.5 rounded-full bg-slate-100 dark:bg-zinc-800 flex items-center justify-center text-slate-400 dark:text-zinc-500">
@@ -603,87 +672,103 @@ export default function App() {
       );
     }
 
+    type RenderableTimelineItem = Extract<(typeof timelineItems)[number], { type: 'gap' | 'task' }>;
+    type TimelineRenderEvent =
+      | { time: number; kind: 'timeline'; item: RenderableTimelineItem }
+      | { time: number; kind: 'block'; block: RoutineBlock; blockTasks: Task[] };
+
+    const blockEvents: TimelineRenderEvent[] = currentDayBlocks.map((block) => {
+      const blockTasks = sortTasksByTime(currentDayTasks.filter((task) => task.blockId === block.id));
+      const startTime = block.startTime || blockTasks[0]?.startTime || '09:00';
+      return {
+        time: parseTimeToMinutes(startTime),
+        kind: 'block',
+        block,
+        blockTasks,
+      };
+    });
+    const timelineEvents: TimelineRenderEvent[] = timelineItems.flatMap((item) => {
+      if (item.type === 'clash_warning') return [];
+      return [{
+        time: parseTimeToMinutes(item.type === 'gap' ? item.startTime : item.task.startTime),
+        kind: 'timeline' as const,
+        item,
+      }];
+    });
+    const events = [...timelineEvents, ...blockEvents].sort((a, b) =>
+      a.time - b.time || (a.kind === b.kind ? 0 : a.kind === 'block' ? -1 : 1)
+    );
     const renderedElements: React.ReactNode[] = [];
-    let currentBlockClusterId: string | null = null;
-    let currentBlockItems: Task[] = [];
     let lastColor: string | undefined = undefined;
     let lastTaskEndM: number | null = null;
 
-    const flushBlockCluster = () => {
-      if (currentBlockClusterId && currentBlockItems.length > 0) {
-        const blk = blocks.find((b) => b.id === currentBlockClusterId);
-        if (blk) {
-          const blockTasks = [...currentBlockItems];
-          renderedElements.push(
-            <RoutineBlockContainer
-              key={`block-container-${blk.id}-${blockTasks[0].id}`}
-              block={blk}
-              tasks={blockTasks}
-              use24Hour={settings.use24Hour}
-              accentColor={accentColor}
-              onMoveBlock={handleMoveBlock}
-              onCopyBlock={handleCopyBlock}
-              onEditBlock={(b) => {
-                setEditingBlock(b);
-                setIsBlockModalOpen(true);
-              }}
-              onDeleteBlock={handleDeleteBlock}
-              onAddTaskToBlock={(blockId) => {
-                setEditingTask(null);
-                setModalInitialBlockId(blockId);
-                const lastTask = blockTasks[blockTasks.length - 1];
-                if (lastTask) {
-                  const end = parseTimeToMinutes(lastTask.startTime) + lastTask.durationMinutes;
-                  setModalInitialTime(minutesToTimeString(end, true));
-                }
-                setIsTaskPickerOpen(true);
-              }}
-            >
-              {blockTasks.map((t, idx) => {
-                const prevColor = idx === 0 ? (lastColor || blk.color) : blockTasks[idx - 1].color;
-                const taskStartM = parseTimeToMinutes(t.startTime);
-                const isOverlappingPrev = lastTaskEndM !== null && taskStartM < lastTaskEndM;
-                lastTaskEndM = taskStartM + t.durationMinutes;
-                return (
-                  <TimelineTask
-                    key={t.id}
-                    task={t}
-                    currentTimeMinutes={effectiveCurrentTimeMinutes}
-                    realTimeMinutes={realTimeMinutes}
-                    use24Hour={settings.use24Hour}
-                    isFirst={idx === 0}
-                    isLast={idx === blockTasks.length - 1}
-                    isOverlappingPrev={isOverlappingPrev}
-                    prevTaskColor={prevColor}
-                    accentColor={accentColor}
-                    onToggleComplete={handleToggleComplete}
-                    onToggleSubtask={handleToggleSubtask}
-                    onEditTask={(taskToEdit) => {
-                      setEditingTask(taskToEdit);
-                      setModalInitialTemplate(null);
-                      setIsTaskModalOpen(true);
-                    }}
-                    onDeleteTask={handleDeleteTask}
-                    onCopyTask={handleCopyTask}
-                    onOpenFocus={(taskToFocus) => setFocusTask(taskToFocus)}
-                    onUpdateTaskTime={handleUpdateTaskTime}
-                  />
-                );
-              })}
-            </RoutineBlockContainer>
-          );
-          if (blockTasks.length > 0) {
-            lastColor = blockTasks[blockTasks.length - 1].color;
-          }
-        }
-        currentBlockClusterId = null;
-        currentBlockItems = [];
+    events.forEach((event, index) => {
+      if (event.kind === 'block') {
+        const { block, blockTasks } = event;
+        const blockStartM = parseTimeToMinutes(block.startTime || blockTasks[0]?.startTime || '09:00');
+        const blockEndM = blockStartM + (block.durationMinutes || 60);
+        renderedElements.push(
+          <RoutineBlockContainer
+            key={`block-container-${block.id}`}
+            block={block}
+            tasks={blockTasks}
+            use24Hour={settings.use24Hour}
+            accentColor={accentColor}
+            onMoveBlock={handleMoveBlock}
+            onCopyBlock={handleCopyBlock}
+            onEditBlock={(targetBlock) => {
+              setEditingBlock(targetBlock);
+              setIsBlockModalOpen(true);
+            }}
+            onDeleteBlock={handleDeleteBlock}
+            onAssignTaskToBlock={handleAssignTaskToBlock}
+          >
+            {blockTasks.map((task, taskIndex) => {
+              const previousTask = blockTasks[taskIndex - 1];
+              const taskStartM = parseTimeToMinutes(task.startTime);
+              const taskEndM = taskStartM + (task.isReminder ? 0 : task.durationMinutes);
+              const isOverlappingPrev = previousTask
+                ? taskStartM < parseTimeToMinutes(previousTask.startTime) + previousTask.durationMinutes
+                : taskStartM < blockStartM;
+              return (
+                <TimelineTask
+                  key={task.id}
+                  task={task}
+                  currentTimeMinutes={effectiveCurrentTimeMinutes}
+                  realTimeMinutes={realTimeMinutes}
+                  use24Hour={settings.use24Hour}
+                  isFirst={taskIndex === 0}
+                  isLast={taskIndex === blockTasks.length - 1}
+                  isOverlappingPrev={isOverlappingPrev}
+                  prevTaskColor={previousTask?.color || block.color}
+                  accentColor={accentColor}
+                  onToggleComplete={handleToggleComplete}
+                  onToggleSubtask={handleToggleSubtask}
+                  onEditTask={(taskToEdit) => {
+                    setEditingTask(taskToEdit);
+                    setModalInitialTemplate(null);
+                    setIsTaskModalOpen(true);
+                  }}
+                  onDeleteTask={handleDeleteTask}
+                  onCopyTask={handleCopyTask}
+                  onOpenFocus={(taskToFocus) => setFocusTask(taskToFocus)}
+                  onUpdateTaskTime={handleUpdateTaskTime}
+                />
+              );
+            })}
+          </RoutineBlockContainer>
+        );
+        lastColor = blockTasks[blockTasks.length - 1]?.color || block.color;
+        lastTaskEndM = blockTasks.length > 0
+          ? Math.max(blockEndM, ...blockTasks.map((task) =>
+            parseTimeToMinutes(task.startTime) + (task.isReminder ? 0 : task.durationMinutes)
+          ))
+          : blockEndM;
+        return;
       }
-    };
 
-    timelineItems.forEach((item, index) => {
+      const item = event.item;
       if (item.type === 'gap') {
-        flushBlockCluster();
         const isPastGap = parseTimeToMinutes(item.endTime) <= effectiveCurrentTimeMinutes;
         renderedElements.push(
           <UnallocatedGap
@@ -700,14 +785,8 @@ export default function App() {
         lastTaskEndM = parseTimeToMinutes(item.endTime);
       } else if (item.type === 'task') {
         const task = item.task;
-        if (task.blockId) {
-          if (currentBlockClusterId && currentBlockClusterId !== task.blockId) {
-            flushBlockCluster();
-          }
-          currentBlockClusterId = task.blockId;
-          currentBlockItems.push(task);
-        } else {
-          flushBlockCluster();
+        const hasVisibleBlock = currentDayBlocks.some((block) => block.id === task.blockId);
+        if (!hasVisibleBlock) {
           const prevColor = lastColor;
           lastColor = task.color;
           const taskStartM = parseTimeToMinutes(task.startTime);
@@ -741,8 +820,6 @@ export default function App() {
         }
       }
     });
-
-    flushBlockCluster();
 
     return renderedElements;
   };
@@ -832,7 +909,6 @@ export default function App() {
                 setModalInitialTemplate(null);
                 setModalInitialTime('09:00');
                 setModalInitialDuration(30);
-                setModalInitialBlockId(null);
                 setIsTaskPickerOpen(true);
               }}
               aria-label="Add task"
@@ -865,7 +941,6 @@ export default function App() {
           setEditingTask(null);
           setModalInitialTemplate(template);
           setModalInitialTime('09:00');
-          setModalInitialBlockId(null);
           setIsTaskModalOpen(true);
         }}
         taskTemplates={settings.taskTemplates || []}
@@ -882,11 +957,9 @@ export default function App() {
         currentDay={selectedDay}
         taskTemplates={settings.taskTemplates || []}
         quickDurations={settings.quickDurations}
-        blocks={currentDayBlocks}
         initialTemplate={modalInitialTemplate}
         initialStartTime={modalInitialTime}
         initialDuration={modalInitialDuration}
-        initialBlockId={modalInitialBlockId}
         accentColor={accentColor}
         uniformTaskColorEnabled={uniformEnabled}
         uniformTaskColor={uniformColor}
@@ -993,6 +1066,43 @@ export default function App() {
         onToggleComplete={handleToggleComplete}
         onToggleSubtask={handleToggleSubtask}
       />
+
+      {pendingBlockRemoval && (
+        <div className="fixed inset-0 z-[1300] flex items-center justify-center bg-black/45 p-4 backdrop-blur-xs">
+          <div
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="remove-task-from-block-title"
+            className="w-full max-w-sm rounded-3xl bg-white p-5 shadow-2xl dark:bg-zinc-900"
+          >
+            <h2 id="remove-task-from-block-title" className="text-base font-bold text-slate-900 dark:text-white">
+              Remove task from routine block?
+            </h2>
+            <p className="mt-2 text-sm text-slate-600 dark:text-zinc-300">
+              Are you sure you want to remove this task from your routine block?
+            </p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setPendingBlockRemoval(null)}
+                className="rounded-xl px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-100 dark:text-zinc-300 dark:hover:bg-zinc-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  executeTaskMove(pendingBlockRemoval.taskId, pendingBlockRemoval.startTime, null);
+                  setPendingBlockRemoval(null);
+                }}
+                className="rounded-xl bg-rose-600 px-4 py-2 text-sm font-semibold text-white hover:bg-rose-700"
+              >
+                Remove task
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

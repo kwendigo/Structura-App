@@ -17,6 +17,8 @@ export interface RoutineBlock {
   color: string; // Hex color or palette key
   day: DayOfWeek; // Primary day or first assigned
   days?: DayOfWeek[]; // Repeating days (Mon, Tue, etc.)
+  startTime?: string;
+  durationMinutes?: number;
   order?: number;
 }
 

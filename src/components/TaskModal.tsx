@@ -11,7 +11,6 @@ import {
   Trash2,
   Clock,
   Check,
-  Folder,
   Palette,
   MoreHorizontal,
   RotateCw,
@@ -19,7 +18,7 @@ import {
   Bookmark,
   Bell,
 } from 'lucide-react';
-import { Task, Subtask, DayOfWeek, RoutineBlock, TaskTemplate } from '../types';
+import { Task, Subtask, DayOfWeek, TaskTemplate } from '../types';
 import { DAYS_OF_WEEK, formatDuration, calculateEndTime } from '../utils/scheduleLogic';
 import { APPLE_PALETTE } from '../utils/storage';
 import { AVAILABLE_ICONS, IconRenderer } from './IconRenderer';
@@ -37,11 +36,9 @@ interface TaskModalProps {
   currentDay: DayOfWeek;
   taskTemplates: TaskTemplate[];
   quickDurations: number[];
-  blocks: RoutineBlock[];
   initialTemplate?: TaskTemplate | null;
   initialStartTime?: string;
   initialDuration?: number;
-  initialBlockId?: string | null;
   accentColor?: string;
   uniformTaskColorEnabled?: boolean;
   uniformTaskColor?: string;
@@ -59,11 +56,9 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   currentDay,
   taskTemplates,
   quickDurations,
-  blocks,
   initialTemplate,
   initialStartTime,
   initialDuration,
-  initialBlockId,
   accentColor = '#007AFF',
   uniformTaskColorEnabled = false,
   uniformTaskColor = '#007AFF',
@@ -86,7 +81,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([currentDay]);
   const [subtasks, setSubtasks] = useState<Subtask[]>([]);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
-  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [isCompleted, setIsCompleted] = useState(false);
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -113,7 +107,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setColor(uniformTaskColorEnabled ? uniformTaskColor : editingTask.color);
       setSelectedDays(editingTask.days);
       setSubtasks(editingTask.subtasks || []);
-      setSelectedBlockId(editingTask.blockId || null);
       setNotes(editingTask.notes || '');
       setIsCompleted(editingTask.completed);
       setCustomHex(editingTask.color);
@@ -127,7 +120,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setCustomHex(initialTemplate.color || accentColor);
       setSelectedDays([currentDay]);
       setSubtasks([]);
-      setSelectedBlockId(initialBlockId || null);
       setNotes('');
       setIsCompleted(false);
     } else {
@@ -140,7 +132,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
       setCustomHex(uniformTaskColorEnabled ? uniformTaskColor : accentColor);
       setSelectedDays([currentDay]);
       setSubtasks([]);
-      setSelectedBlockId(initialBlockId || null);
       setNotes('');
       setIsCompleted(false);
     }
@@ -149,7 +140,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
     setShowHexDeleteMode(false);
     setHexToDelete(null);
     setShowCustomTimePicker(false);
-  }, [editingTask, initialTemplate, isOpen, currentDay, initialStartTime, initialDuration, initialBlockId, uniformTaskColorEnabled, uniformTaskColor, accentColor]);
+  }, [editingTask, initialTemplate, isOpen, currentDay, initialStartTime, initialDuration, uniformTaskColorEnabled, uniformTaskColor, accentColor]);
 
   useEffect(() => () => {
     if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
@@ -288,7 +279,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
         completed: isCompleted,
         days: selectedDays,
         subtasks,
-        blockId: selectedBlockId,
+        blockId: editingTask?.blockId || null,
         notes: notes.trim(),
       },
       editingTask ? editingTask.id : undefined
@@ -530,7 +521,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1 overflow-x-auto pb-1 scrollbar-none text-[10px]">
-                    {['All', 'Routine', 'Work', 'Study', 'Fitness', 'Food', 'Social', 'Leisure', 'Travel', 'Home', 'Mindfulness'].map((cat) => (
+                    {['All', 'Routine', 'Self-Care', 'Human Activity', 'Work', 'Study', 'Study/Creation', 'Fitness', 'Food', 'Social', 'Leisure', 'Travel', 'Home', 'Mindfulness'].map((cat) => (
                       <button
                         key={cat}
                         type="button"
@@ -552,7 +543,8 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                       const matchesSearch =
                         !iconSearch ||
                         item.label.toLowerCase().includes(iconSearch.toLowerCase()) ||
-                        item.id.toLowerCase().includes(iconSearch.toLowerCase());
+                        item.id.toLowerCase().includes(iconSearch.toLowerCase()) ||
+                        item.category.toLowerCase().includes(iconSearch.toLowerCase());
                       return matchesCat && matchesSearch;
                     }).map((item) => (
                       <button
@@ -666,45 +658,6 @@ export const TaskModal: React.FC<TaskModalProps> = ({
                 >
                   <MoreHorizontal className="h-4.5 w-4.5" />
                 </button>
-              </div>
-            </div>
-
-            <div className="py-2.5">
-              <div className="flex items-center justify-between mb-1.5 text-slate-600 dark:text-zinc-300">
-                <div className="flex items-center gap-1.5">
-                  <Folder className="w-3.5 h-3.5" style={{ color: accentColor }} />
-                  <span className="font-medium">Routine Block</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => setSelectedBlockId(null)}
-                  className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors ${
-                    selectedBlockId === null
-                      ? 'bg-slate-900 text-white dark:bg-white dark:text-zinc-900'
-                      : 'bg-stone-100 dark:bg-zinc-700 text-slate-600 dark:text-zinc-400'
-                  }`}
-                >
-                  None (Free task)
-                </button>
-                {blocks.map((b) => (
-                  <button
-                    key={b.id}
-                    type="button"
-                    onClick={() => setSelectedBlockId(b.id)}
-                    className={`px-2.5 py-1 rounded-xl text-[11px] font-medium transition-colors ${
-                      selectedBlockId === b.id ? 'ring-2 ring-[var(--accent-color)] font-bold' : ''
-                    }`}
-                    style={{
-                      backgroundColor: `${b.color}20`,
-                      color: b.color,
-                    }}
-                  >
-                    {b.name}
-                  </button>
-                ))}
               </div>
             </div>
 

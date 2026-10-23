@@ -10,13 +10,12 @@ import {
   Copy,
   Edit3,
   Trash2,
-  Plus,
   RotateCw,
   Clock,
 } from 'lucide-react';
 import { RoutineBlock, Task } from '../types';
 import { useLiftedDrag } from '../hooks/useLiftedDrag';
-import { parseTimeToMinutes, minutesToTimeString } from '../utils/scheduleLogic';
+import { formatDuration, getProportionalNodeHeight, parseTimeToMinutes, minutesToTimeString } from '../utils/scheduleLogic';
 
 interface RoutineBlockContainerProps {
   block: RoutineBlock;
@@ -27,7 +26,7 @@ interface RoutineBlockContainerProps {
   onCopyBlock: (block: RoutineBlock) => void;
   onEditBlock: (block: RoutineBlock) => void;
   onDeleteBlock: (blockId: string) => void;
-  onAddTaskToBlock: (blockId: string) => void;
+  onAssignTaskToBlock: (taskId: string, blockId: string) => void;
   onMoveBlock?: (blockId: string, deltaMinutes: number) => void;
 }
 
@@ -40,10 +39,11 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
   onCopyBlock,
   onEditBlock,
   onDeleteBlock,
-  onAddTaskToBlock,
+  onAssignTaskToBlock,
   onMoveBlock,
 }) => {
   const [showMenu, setShowMenu] = useState(false);
+  const [isDropTarget, setIsDropTarget] = useState(false);
   const [isLifted, setIsLifted] = useState(false);
   const [dragOffsetY, setDragOffsetY] = useState(0);
   const [liveSnappedDelta, setLiveSnappedDelta] = useState(0);
@@ -57,7 +57,9 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
   const liveSnappedDeltaRef = useRef(0);
 
   const firstTask = tasks[0];
-  const firstTaskStartM = firstTask ? parseTimeToMinutes(firstTask.startTime) : 540;
+  const blockStartTime = block.startTime || firstTask?.startTime || '09:00';
+  const firstTaskStartM = parseTimeToMinutes(blockStartTime);
+  const blockDuration = block.durationMinutes || 60;
   const hex = block.color.startsWith('#') ? block.color : accentColor;
 
   const handleTitleTouchStart = (e: React.TouchEvent | React.MouseEvent) => {
@@ -99,7 +101,7 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
     onMove: (deltaY) => {
       setDragOffsetY(deltaY);
       const deltaM = Math.round(deltaY / 1.6);
-      const snappedDelta = Math.round(deltaM / 5) * 5;
+      const snappedDelta = Math.round(deltaM / 10) * 10;
       liveSnappedDeltaRef.current = snappedDelta;
       setLiveSnappedDelta(snappedDelta);
     },
@@ -129,6 +131,7 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
   const previewFirstStartM = Math.max(0, Math.min(1440 - 15, firstTaskStartM + liveSnappedDelta));
   const previewTimeStr = minutesToTimeString(previewFirstStartM, use24Hour);
   const areTasksFolded = isLifted;
+  const emptyBlockHeight = tasks.length === 0 ? getProportionalNodeHeight(blockDuration) : undefined;
 
   return (
     <div
@@ -137,13 +140,42 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
         transform: isLifted ? `translateY(${dragOffsetY}px)` : undefined,
         backgroundColor: `${hex}0c`,
         touchAction: isLifted ? 'none' : undefined,
+        minHeight: emptyBlockHeight,
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        event.dataTransfer.dropEffect = 'move';
+      }}
+      onDragEnter={(event) => {
+        event.preventDefault();
+        setIsDropTarget(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) {
+          setIsDropTarget(false);
+        }
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setIsDropTarget(false);
+        const taskId = event.dataTransfer.getData('text/plain');
+        if (taskId) onAssignTaskToBlock(taskId, block.id);
       }}
       className={`relative my-3 rounded-3xl p-2.5 transition-all select-none group/block ring-1 ring-black/5 dark:ring-white/5 ${
         isLifted
           ? 'z-40 shadow-2xl scale-[1.02] ring-2 ring-black/10 dark:ring-white/10 bg-white/95 dark:bg-zinc-900/95 cursor-grabbing'
-          : ''
+          : isDropTarget
+            ? 'ring-2 shadow-lg'
+            : ''
       }`}
     >
+      {isDropTarget && (
+        <div
+          className="pointer-events-none absolute inset-0 rounded-3xl ring-2"
+          style={{ borderColor: hex, backgroundColor: `${hex}08` }}
+        />
+      )}
       {isLifted && (
         <div className="absolute -left-1 top-2 z-50 px-3 py-1 bg-slate-900 text-white dark:bg-white dark:text-zinc-900 rounded-xl shadow-2xl flex items-center gap-1.5 font-bold text-xs pointer-events-none animate-in fade-in zoom-95">
           <Clock className="w-3.5 h-3.5" style={{ color: hex }} />
@@ -175,7 +207,7 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
             {block.name}
           </span>
           <span className="whitespace-nowrap text-[10px] opacity-75 font-medium lowercase">
-            · {tasks.length} {tasks.length === 1 ? 'task' : 'tasks'}
+            · {minutesToTimeString(firstTaskStartM, use24Hour)} · {formatDuration(blockDuration)}
           </span>
           {block.days && block.days.length > 1 && (
             <span
@@ -188,19 +220,6 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
         </div>
 
         <div className="flex items-center gap-1">
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              onAddTaskToBlock(block.id);
-            }}
-            aria-label={`Add task to ${block.name}`}
-            className="flex items-center gap-1 text-[11px] font-medium px-2 py-1 rounded-xl hover:bg-black/5 dark:hover:bg-white/5 transition-colors"
-            style={{ color: hex }}
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Add task</span>
-          </button>
-
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -258,7 +277,12 @@ export const RoutineBlockContainer: React.FC<RoutineBlockContainerProps> = ({
 
       {!areTasksFolded && (
         <div className="space-y-0.5 animate-in fade-in duration-150">
-          {children}
+          {tasks.length > 0 ? children : (
+            <div className="flex h-full min-h-12 items-center justify-center rounded-2xl border border-dashed px-3 text-center text-xs text-slate-400 dark:text-zinc-500"
+              style={{ borderColor: `${hex}55` }}>
+              Drop tasks here to add them to this routine
+            </div>
+          )}
         </div>
       )}
     </div>

@@ -108,7 +108,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
 
   const handleGestureStart = (e: React.TouchEvent | React.MouseEvent) => {
     const target = e.target as HTMLElement;
-    if (target.closest('button') || target.closest('input')) {
+    if (target.closest('button') || target.closest('input') || target.closest('[data-block-drag-handle]')) {
       return;
     }
 
@@ -155,7 +155,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
       setDragOffsetY(deltaY);
       const deltaMinutes = Math.round(deltaY / 1.6);
       const rawMinutes = Math.max(0, Math.min(1440 - (isReminder ? 0 : task.durationMinutes), touchStartPos.current.startM + deltaMinutes));
-      const snappedMinutes = Math.round(rawMinutes / 5) * 5;
+      const snappedMinutes = Math.round(rawMinutes / 10) * 10;
       liveSnappedStartMRef.current = snappedMinutes;
       setLiveSnappedStartM(snappedMinutes);
     },
@@ -285,6 +285,12 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
         )}
 
         <div
+          data-block-drag-handle
+          draggable
+          onDragStart={(event) => {
+            event.dataTransfer.setData('text/plain', task.id);
+            event.dataTransfer.effectAllowed = 'move';
+          }}
           className={`relative w-14 min-h-14 rounded-full flex items-center justify-center overflow-hidden transition-all shadow-xs flex-shrink-0 p-3 ${
             isActive ? 'bg-slate-100 dark:bg-zinc-800' : ''
           } ${

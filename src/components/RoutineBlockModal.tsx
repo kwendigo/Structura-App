@@ -4,15 +4,15 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { X, Folder, Check, RotateCw, CheckSquare } from 'lucide-react';
+import { X, Folder, Check, RotateCw, Clock } from 'lucide-react';
 import { RoutineBlock, DayOfWeek, Task } from '../types';
 import { APPLE_PALETTE } from '../utils/storage';
-import { DAYS_OF_WEEK } from '../utils/scheduleLogic';
+import { DAYS_OF_WEEK, parseTimeToMinutes, sortTasksByTime } from '../utils/scheduleLogic';
 
 interface RoutineBlockModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSaveBlock: (blockData: Omit<RoutineBlock, 'id'>, existingId?: string, assignedTaskIds?: string[]) => void;
+  onSaveBlock: (blockData: Omit<RoutineBlock, 'id'>, existingId?: string) => void;
   editingBlock: RoutineBlock | null;
   currentDay: DayOfWeek;
   allTasks: Task[];
@@ -32,7 +32,8 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
   const [color, setColor] = useState('#007AFF');
   const [customHex, setCustomHex] = useState('');
   const [selectedDays, setSelectedDays] = useState<DayOfWeek[]>([currentDay]);
-  const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
+  const [startTime, setStartTime] = useState('09:00');
+  const [durationMinutes, setDurationMinutes] = useState(60);
 
   useEffect(() => {
     if (editingBlock) {
@@ -44,14 +45,24 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
           ? editingBlock.days
           : [editingBlock.day]
       );
-      const preAssigned = allTasks.filter((t) => t.blockId === editingBlock.id).map((t) => t.id);
-      setSelectedTaskIds(preAssigned);
+      const existingTasks = sortTasksByTime(allTasks.filter((task) => task.blockId === editingBlock.id));
+      const startTime = editingBlock.startTime || existingTasks[0]?.startTime || '09:00';
+      const startMinutes = parseTimeToMinutes(startTime);
+      const inferredDuration = Math.max(
+        60,
+        ...existingTasks.map((task) =>
+          parseTimeToMinutes(task.startTime) + (task.isReminder ? 0 : task.durationMinutes) - startMinutes
+        )
+      );
+      setStartTime(startTime);
+      setDurationMinutes(editingBlock.durationMinutes || inferredDuration);
     } else {
       setName('');
       setColor('#FF9500');
       setCustomHex('');
       setSelectedDays([currentDay]);
-      setSelectedTaskIds([]);
+      setStartTime('09:00');
+      setDurationMinutes(60);
     }
   }, [editingBlock, isOpen, currentDay, allTasks]);
 
@@ -67,14 +78,6 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
     }
   };
 
-  const handleToggleTaskSelection = (taskId: string) => {
-    if (selectedTaskIds.includes(taskId)) {
-      setSelectedTaskIds(selectedTaskIds.filter((id) => id !== taskId));
-    } else {
-      setSelectedTaskIds([...selectedTaskIds, taskId]);
-    }
-  };
-
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!name.trim()) return;
@@ -85,15 +88,13 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
         color,
         day: selectedDays[0] || currentDay,
         days: selectedDays,
+        startTime,
+        durationMinutes,
       },
-      editingBlock ? editingBlock.id : undefined,
-      selectedTaskIds
+      editingBlock ? editingBlock.id : undefined
     );
     onClose();
   };
-
-  // Filter tasks for current day or general library
-  const dayTasks = allTasks.filter((t) => t.days.some((d) => selectedDays.includes(d)));
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
@@ -165,6 +166,40 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
 
           <div>
             <div className="flex items-center gap-1.5 mb-2">
+              <Clock className="w-3.5 h-3.5" style={{ color: accentColor }} />
+              <span className="text-xs font-semibold uppercase text-slate-400 dark:text-zinc-500">
+                Block Time & Duration
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <label className="space-y-1">
+                <span className="block text-[11px] text-slate-500 dark:text-zinc-400">Start time</span>
+                <input
+                  type="time"
+                  required
+                  value={startTime}
+                  onChange={(event) => setStartTime(event.target.value)}
+                  className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-sm"
+                />
+              </label>
+              <label className="space-y-1">
+                <span className="block text-[11px] text-slate-500 dark:text-zinc-400">Duration (minutes)</span>
+                <input
+                  type="number"
+                  required
+                  min={10}
+                  max={1440}
+                  step={10}
+                  value={durationMinutes}
+                  onChange={(event) => setDurationMinutes(Number(event.target.value))}
+                  className="w-full px-3 py-2 rounded-xl bg-white dark:bg-zinc-800 text-slate-900 dark:text-white text-sm"
+                />
+              </label>
+            </div>
+          </div>
+
+          <div>
+            <div className="flex items-center gap-1.5 mb-2">
               <RotateCw className="w-3.5 h-3.5" style={{ color: accentColor }} />
               <span className="text-xs font-semibold uppercase text-slate-400 dark:text-zinc-500">
                 Repeat Routine Block On
@@ -188,50 +223,6 @@ export const RoutineBlockModal: React.FC<RoutineBlockModalProps> = ({
                   </button>
                 );
               })}
-            </div>
-          </div>
-
-          {/* Pre-existing tasks selector for this block */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold uppercase text-slate-400 dark:text-zinc-500">
-                Include Pre-existing Tasks ({selectedTaskIds.length} selected)
-              </span>
-            </div>
-
-            <div className="bg-white dark:bg-zinc-800 rounded-2xl shadow-xs divide-y divide-slate-100 dark:divide-zinc-700/50 max-h-40 overflow-y-auto">
-              {dayTasks.length === 0 ? (
-                <div className="p-4 text-center text-xs text-slate-400">
-                  No tasks found for selected days.
-                </div>
-              ) : (
-                dayTasks.map((t) => {
-                  const isChecked = selectedTaskIds.includes(t.id);
-                  return (
-                    <div
-                      key={t.id}
-                      onClick={() => handleToggleTaskSelection(t.id)}
-                      className="px-3 py-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-zinc-700/40 transition-colors text-xs"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`w-4 h-4 rounded-md border flex items-center justify-center transition-all ${
-                            isChecked ? 'bg-[var(--accent-color)] border-[var(--accent-color)] text-white' : 'border-slate-300 dark:border-zinc-600'
-                          }`}
-                        >
-                          {isChecked && <Check className="w-3 h-3 stroke-[3]" />}
-                        </div>
-                        <span className="font-semibold text-slate-800 dark:text-zinc-200">
-                          {t.title}
-                        </span>
-                      </div>
-                      <span className="text-[11px] text-slate-400 font-mono">
-                        {t.startTime}
-                      </span>
-                    </div>
-                  );
-                })
-              )}
             </div>
           </div>
 
