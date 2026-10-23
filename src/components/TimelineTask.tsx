@@ -341,7 +341,7 @@ export const TimelineTask: React.FC<TimelineTaskProps> = ({
               {formatRemainingClock(progress.remainingMinutes)}
             </span>
           ) : isReminder ? (
-            <span className="font-semibold" style={{ color: task.color }}>Reminder at {displayedStartTime}</span>
+            <span>{displayedStartTime}</span>
           ) : (
             <>
               <span>
